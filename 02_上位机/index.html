@@ -1,0 +1,2180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FPGA 具身智能机器人 · 实时控制台</title>
+<!-- PAGE_VER: 2026-10-23 14:25 -->
+<style>
+  /* ===== v3 设计系统（参考：四个一 alpha2 仪器级平台 · 双主题 · 玻璃拟态）===== */
+  :root{
+    color-scheme: dark;
+    --bg:#070f1a;
+    --panel:rgba(15,29,47,.82); --panel2:rgba(26,46,72,.55); --panel-solid:#12233a;
+    --line:rgba(148,183,220,.14); --lineh:rgba(148,183,220,.34);
+    --tx:#eef6ff; --tx2:#93a8bf; --tx3:#5f7189;
+    --acc:#2dd6c8; --acc2:#57a8ff;
+    --ok:#3ddc97; --warn:#ffc061; --err:#ff6b76; --info:#6fb1ff;
+    --okbg:rgba(61,220,151,.1); --warnbg:rgba(255,192,97,.1); --errbg:rgba(255,107,118,.1); --accbg:rgba(45,214,200,.1);
+    --r:16px; --rm:10px;
+    --shadow:0 18px 50px rgba(0,0,0,.35);
+    --mono:Consolas,"JetBrains Mono",ui-monospace,monospace;
+    --sans:Inter,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    /* 兼容别名（防内联样式引用旧名） */
+    --accbg2:var(--accbg);
+  }
+  :root.light{
+    color-scheme: light;
+    --bg:#eef3f8; --panel:rgba(255,255,255,.88); --panel2:rgba(244,249,253,.8); --panel-solid:#ffffff;
+    --line:rgba(16,40,64,.13); --lineh:rgba(16,40,64,.32);
+    --tx:#0f2740; --tx2:#54708a; --tx3:#8296a9;
+    --acc:#008c80; --acc2:#1675cf;
+    --ok:#0e9f6e; --warn:#a76700; --err:#c73343; --info:#1675cf;
+    --okbg:rgba(14,159,110,.1); --warnbg:rgba(167,103,0,.1); --errbg:rgba(199,51,67,.08); --accbg:rgba(0,140,128,.09);
+    --shadow:0 14px 40px rgba(30,62,92,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;color:var(--tx);font:14px/1.55 var(--sans);
+       background:
+         radial-gradient(circle at 82% -8%, rgba(87,168,255,.16), transparent 30rem),
+         radial-gradient(circle at 6% 96%, rgba(45,214,200,.09), transparent 26rem),
+         var(--bg);
+       display:flex;flex-direction:column;overflow:hidden;   /* ★一屏：录屏不滚动 */
+       transition:background .3s ease}
+  :root.light body{
+     background:
+       radial-gradient(circle at 82% -8%, rgba(22,117,207,.07), transparent 30rem),
+       radial-gradient(circle at 6% 96%, rgba(0,140,128,.06), transparent 26rem),
+       var(--bg);}
+  h1,h2,h3{font-weight:600;margin:0;letter-spacing:-.02em}
+  button{font:inherit;color:var(--tx);background:var(--panel2);border:1px solid var(--line);
+         border-radius:var(--rm);padding:8px 13px;cursor:pointer;transition:border-color .15s, background .15s, transform .06s}
+  button:hover{border-color:var(--lineh)}
+  button:active{transform:translateY(1px)}
+  button.primary{background:var(--accbg);border-color:var(--acc);color:var(--acc);font-weight:600}
+  button.primary:hover{box-shadow:0 0 0 3px var(--accbg)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  input,select{font:inherit;color:var(--tx);background:var(--panel2);border:1px solid var(--line);
+        border-radius:var(--rm);padding:7px 10px;min-width:0}
+  input:focus,select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--accbg)}
+
+  /* ===== A 顶栏（玻璃 + 状态胶囊）===== */
+  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 18px;
+         background:var(--panel);border-bottom:1px solid var(--line);
+         backdrop-filter:blur(18px);position:sticky;top:0;z-index:5}
+  .brand{font-size:15px;font-weight:650;letter-spacing:-.02em}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--tx3);display:inline-block;flex:none}
+  .dot.on{background:var(--ok);box-shadow:0 0 0 4px var(--okbg);animation:breath 2s ease-in-out infinite}
+  .dot.err{background:var(--err);box-shadow:0 0 0 4px var(--errbg)}
+  .dot.warn{background:var(--warn);box-shadow:0 0 0 4px var(--warnbg)}
+  @keyframes breath{0%,100%{opacity:1}50%{opacity:.45}}
+  .grow{flex:1}
+  .clock{font-family:var(--mono);font-size:13px;color:var(--tx2)}
+  .dev{font-size:13px;color:var(--tx2)}
+  #status{font-size:13px;display:inline-flex;align-items:center;gap:8px;
+          border:1px solid var(--line);border-radius:999px;padding:6px 13px;background:var(--panel2)}
+  .theme-btn{width:38px;height:38px;padding:0;border-radius:12px;font-size:17px;line-height:1;
+             display:inline-flex;align-items:center;justify-content:center}
+
+  /* 电量条 */
+  .bat{display:inline-flex;align-items:center;gap:7px}
+  .batbar{width:56px;height:10px;border:1px solid var(--lineh);border-radius:5px;padding:1px}
+  .batfill{display:block;height:100%;width:0;background:var(--tx3);border-radius:3px;transition:width .4s,background .4s}
+  #batText{font-family:var(--mono);font-size:13px;color:var(--tx2)}
+
+  /* ===== 布局 ===== */
+  .wrap{flex:1 1 auto;min-height:0;width:100%;max-width:1560px;margin:0 auto;
+        display:flex;flex-direction:column;padding:8px 16px 6px}
+  .main{flex:1 1 auto;min-height:0;display:grid;gap:10px;
+        grid-template-columns:minmax(0,11fr) minmax(0,9fr);margin-top:12px}
+  @media (max-width:1024px){
+    body{overflow:auto}
+    .main{grid-template-columns:minmax(0,1fr);flex:0 0 auto;min-height:auto}   /* 单列：整页滚动 */
+    .side{overflow:visible;max-height:none}
+    .mapcard .mapwrap{width:100%;height:52vh;flex:0 0 auto}
+  }
+  /* ★强制列数（网址加 ?cols=1 / ?cols=2），优先级高于断点 —— 录屏/演示用 */
+  html.force2 body{overflow:hidden}
+  html.force2 .main{grid-template-columns:minmax(0,11fr) minmax(0,9fr)!important;
+                    flex:1 1 auto!important;min-height:0!important}
+  html.force2 .side{overflow:auto}
+  html.force1 body{overflow:auto}
+  html.force1 .main{grid-template-columns:minmax(0,1fr)!important;flex:0 0 auto!important;min-height:auto!important}
+  html.force1 .side{overflow:visible;max-height:none}
+  html.force1 .mapcard .mapwrap{width:100%;height:52vh;flex:0 0 auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+        padding:10px 12px;backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+  .cardhead{display:flex;align-items:center;gap:8px;margin-bottom:7px;flex-wrap:wrap}
+  .cardhead h2{font-size:13px;color:var(--tx2);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+  .side{display:flex;flex-direction:column;gap:10px;overflow:auto;min-height:0;
+        scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+  .side::-webkit-scrollbar{width:6px}
+  .side::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+  .side > .card{flex-shrink:0}
+  .hint{font-size:12px;color:var(--tx3)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+  /* ===== B 地图 ===== */
+  svg{display:block}
+  .mapcard{display:flex;flex-direction:column;min-height:0}
+  .mapwrap{flex:1 1 auto;min-height:0;background:#0b1220;border:1px solid var(--line);border-radius:var(--rm);overflow:hidden}
+  :root.light .mapwrap{background:#0d1522}
+  .mapwrap svg{width:100%;height:100%}
+  .mapfoot{margin-top:8px}
+  .pickline{min-height:20px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .maptools{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .mapwrap{position:relative}
+  #posText{position:absolute;top:10px;left:12px;z-index:2;
+           font-family:var(--mono);font-size:13px;color:var(--acc);
+           font-variant-numeric:tabular-nums;white-space:nowrap;
+           background:rgba(7,15,26,.72);border:1px solid var(--line);border-radius:10px;
+           padding:5px 11px;backdrop-filter:blur(6px);pointer-events:none}
+  .legend{font-size:12px;color:var(--tx3);display:inline-flex;gap:12px;align-items:center}
+  .lg{display:inline-flex;align-items:center;gap:5px}
+  .sw{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+  /* ===== C1 指标 ===== */
+  .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+  @media (max-width:560px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .metric{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px 10px;
+          transition:border-color .15s}
+  .metric:hover{border-color:var(--lineh)}
+  .metric .lbl{font-size:11px;color:var(--tx2);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+  .metric .val{font-size:22px;font-weight:650;font-family:var(--mono);font-variant-numeric:tabular-nums;
+               letter-spacing:-.03em;margin-top:2px}
+  .metric .unit{font-size:11px;color:var(--tx3);margin-left:3px;font-weight:400}
+  .stline{display:flex;align-items:center;gap:10px;margin-top:10px}
+  .badge{font-size:15px;font-weight:650;padding:5px 16px;border-radius:999px;border:1px solid var(--lineh);color:var(--tx2)}
+  .badge.st-idle{color:var(--tx2)}
+  .badge.st-nav{color:var(--acc);border-color:var(--acc);background:var(--accbg)}
+  .badge.st-arr{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+  .badge.st-avd{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
+  .badge.st-flt{color:var(--err);border-color:var(--err);background:var(--errbg)}
+  .badge.st-arm{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+
+  /* ===== C2 导航流程 + 途径点 ===== */
+  .flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;padding:2px 0 10px}
+  .fstep{color:var(--tx3);display:inline-flex;align-items:center;gap:4px}
+  .fstep.done{color:var(--ok)}
+  .fstep.cur{color:var(--acc);font-weight:600}
+  .fline{width:14px;height:1px;background:var(--lineh);display:inline-block}
+  .wplist{display:flex;gap:6px;flex-wrap:wrap;min-height:28px;margin-bottom:8px}
+  .wpchip{font-family:var(--mono);font-size:12px;background:var(--panel2);border:1px solid var(--line);
+          border-radius:999px;padding:3px 6px 3px 10px;color:var(--tx2);display:inline-flex;align-items:center;gap:5px}
+  .wpchip.cur{border-color:var(--acc);color:var(--acc);background:var(--accbg)}
+  .wpchip i{font-style:normal;cursor:pointer;color:var(--tx3);padding:0 4px;border-radius:50%}
+  .wpchip i:hover{color:var(--err);background:var(--errbg)}
+
+  /* ===== C3 控制 ===== */
+  .toggle{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+          padding:7px 12px;color:var(--tx);font-size:13px;cursor:pointer;white-space:nowrap}
+  .toggle:hover{border-color:var(--lineh)}
+  #btnPick, #btnKbd{width:150px;text-align:center;padding-left:6px;padding-right:6px}
+  button:focus{outline:none}
+  .gearbtn{padding:3px 9px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
+           color:var(--tx2);font-size:11px;cursor:pointer}
+  .gearbtn.on{border-color:var(--ok);color:var(--ok);font-weight:700}
+  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:6px}
+  .pad .cmd{padding:5px 0}
+  .flowbtns{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:5px}
+  .flowbtns .cmd{padding:5px 0}
+  .estop{width:100%;margin-top:8px;padding:11px 0;background:var(--errbg);border:1px solid var(--err);
+         color:var(--err);border-radius:var(--rm);font-size:15px;font-weight:650;text-align:center;transition:all .15s}
+  .estop:hover{box-shadow:0 0 0 3px var(--errbg)}
+  .estop.armed{background:var(--err);color:#fff;border-color:var(--err)}
+  .homebtn{width:100%;margin-top:8px;padding:10px 0;background:var(--accbg);border:1px solid var(--acc);
+           color:var(--acc);border-radius:var(--rm);font-size:14px;font-weight:600;text-align:center}
+  .homebtn:hover{box-shadow:0 0 0 3px var(--accbg)}
+  .wbtn{min-width:74px;flex-shrink:0}
+  .custcap{margin:14px 0 6px;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--tx2);
+           display:flex;align-items:baseline;gap:10px}
+  .custcap .hint{font-weight:400;letter-spacing:0}
+  .custrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  @media (max-width:1180px){.custrow{grid-template-columns:minmax(0,1fr)}}
+  .custgrp{display:flex;align-items:center;gap:6px;min-width:0}
+  .custgrp input{flex:1 1 auto;min-width:0}
+  .custgrp button{flex:0 0 auto;min-width:60px}
+  .pad .cmd{padding:9px 0}
+  .flowbtns .cmd{padding:9px 0}
+
+  /* ===== D 日志 ===== */
+  .logcard{margin-top:0;flex:0 0 auto}
+  .log{height:68px;overflow:auto;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;
+       font-family:var(--mono);font-size:12px;display:flex;flex-direction:column;gap:3px;
+       scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+  .log .ok{color:var(--ok)} .log .warn{color:var(--warn)}
+  .log .err{color:var(--err)} .log .mut{color:var(--tx3)} .log .sent{color:var(--info)}
+  .log .tm{color:var(--tx3);margin-right:8px}
+  .log .hid{display:none}
+  .chips{display:flex;gap:6px;margin-left:auto}
+  .chip{font-size:12px;padding:2px 10px;border-radius:999px;border:1px solid var(--line);color:var(--tx3);cursor:pointer}
+  .chip:hover{color:var(--tx2);border-color:var(--lineh)}
+  .chip.on{color:var(--acc);border-color:var(--acc);background:var(--accbg)}
+  .statline{display:flex;gap:14px;margin-top:8px;font-size:12px;color:var(--tx3);font-family:var(--mono);flex-wrap:wrap}
+
+  /* ===== E 高级区 ===== */
+  .adv{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:0 16px}
+  .adv summary{cursor:pointer;font-size:13px;color:var(--tx3);padding:10px 0;list-style:none}
+  .adv summary:hover{color:var(--tx2)}
+  .advbody{padding:0 0 14px;display:flex;flex-direction:column;gap:10px}
+  #raw{flex:1;font-family:var(--mono)}
+  .cmdgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px}
+  .cmd{border:1px solid var(--line);border-radius:12px;padding:7px 4px;text-align:center;
+       cursor:pointer;line-height:1.3;background:var(--panel2);transition:border-color .15s}
+  .cmd:hover{border-color:var(--acc)}
+  .cmd .t{font-size:12px}
+  .cmd .s{font-size:11px;color:var(--tx3);font-family:var(--mono)}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .toolbtn{white-space:nowrap;font-size:13px;padding:7px 12px;border-radius:10px;color:var(--tx2)}
+  .toolbtn.on{color:var(--acc);border-color:var(--acc);background:var(--accbg)}
+  .cardhead .badge{font-size:12px;padding:3px 11px}
+  .adv summary{display:flex;align-items:center;padding:8px 0}
+  .adv summary::after{content:"▾";margin-left:auto;color:var(--tx3);transition:transform .2s}
+  .adv[open] summary::after{content:"▴"}
+</style>
+</head>
+<body>
+
+<!-- A 顶栏 -->
+<header>
+  <span class="dot" id="topdot"></span>
+  <span class="brand">具身智能机器人 · FPGA 实时控制台<span id="pageVer" style="font-size:10px;opacity:.5;margin-left:6px">v2170</span></span>
+  <span class="grow"></span>
+  <span class="dev" id="devName">未连接设备</span>
+  <span class="bat" title="电池电压 / 估算余量（2S 锂电：8.4V 满 · 6.4V 空）">
+    <span class="batbar"><span class="batfill" id="batFill"></span></span>
+    <span id="batText">— V</span>
+  </span>
+  <span class="clock" id="clock">--:--:--</span>
+  <span class="conn" id="status"><span class="dot"></span>未连接</span>
+  <select id="transport" title="连接方式">
+    <option value="ble">蓝牙 BLE</option>
+    <option value="serial">USB 串口</option>
+    <option value="mock">模拟数据</option>
+  </select>
+  <label class="hint" id="showAllWrap" style="display:none">
+    <input type="checkbox" id="showAll"> 显示全部设备
+  </label>
+  <button id="btnConn" class="primary">连接</button>
+  <button id="btnDisc" disabled>断开</button>
+  <button id="btnTheme" class="theme-btn" title="切换明暗主题"
+          onclick="var r=document.documentElement;r.classList.toggle('light');try{localStorage.setItem('theme',r.classList.contains('light')?'light':'dark')}catch(e){}">◐</button>
+</header>
+
+<div class="wrap">
+  <div class="main">
+    <!-- B 轨迹地图 -->
+    <section class="card mapcard">
+      <div class="cardhead">
+        <h2>场地轨迹 · 直角坐标（米 · 视野自动跟随小车与途径点）</h2>
+        <span class="grow"></span>
+        <button id="btnClearPath">清空轨迹</button>
+        <button id="btnCsv" title="导出轨迹 / 途径点 / 障碍为 CSV（单位：米）">导出CSV</button>
+        <button id="btnCsvImp" title="从之前导出的 CSV 导入途径点（只读 wp 行）">导入CSV</button>
+        <input id="csvFile" type="file" accept=".csv" style="display:none">
+      </div>
+      <div class="mapwrap">
+        <svg id="field" viewBox="0 0 520 520" role="img" aria-label="场地轨迹图"></svg>
+        <span id="posText">—</span>
+      </div>
+      <div class="mapfoot">
+        <div class="pickline"><span id="pickInfo" class="hint"></span></div>
+        <div class="maptools">
+          <span class="legend">
+            <span class="lg"><span class="sw" style="background:var(--acc)"></span>轨迹/车头</span>
+            <span class="lg"><span class="sw" style="background:var(--ok);border-radius:50%"></span>途径点</span>
+            <span class="lg"><span class="sw" style="border:1.5px solid var(--err)"></span>障碍</span>
+          </span>
+          <span class="grow"></span>
+          <label class="hint" style="display:inline-flex;align-items:center;gap:5px" title="锁定后地图不再随轨迹自动缩放（演示画面稳定）；重置原点时仍会复位"><input type="checkbox" id="viewLock"> 锁定视野</label><button class="toggle" id="btnPick">☒ 点图选点：关</button>
+          <button id="btnKbd" class="toggle" title="开启后用 WASD/方向键开车：轻点=10cm，按住=连续走，松开=停">☒ 键盘控制</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="side">
+      <!-- C1 实时状态 -->
+      <section class="card">
+        <div class="cardhead"><h2>实时状态</h2><span class="grow"></span>
+          <span class="hint" id="mHzwrap">遥测 <b id="mHz">0.0</b> Hz</span>
+          <span class="badge st-idle" id="mSt">待机</span></div>
+        <div class="metrics">
+          <div class="metric"><div class="lbl">X 坐标</div><div class="val" id="mX">—</div></div>
+          <div class="metric"><div class="lbl">Y 坐标</div><div class="val" id="mY">—</div></div>
+          <div class="metric"><div class="lbl">朝向（逆时针+）</div><div class="val" id="mTh">—<span class="unit">°</span></div></div>
+          <div class="metric"><div class="lbl">合成速度</div><div class="val" id="mV">—<span class="unit">m/s</span></div></div>
+          <div class="metric"><div class="lbl">当前目标点</div><div class="val" id="mWp">—</div></div>
+          <div class="metric"><div class="lbl">电池电压</div><div class="val" id="mBat">—<span class="unit">V</span></div></div>
+          <div class="metric"><div class="lbl">电池余量</div><div class="val" id="mBatP">—<span class="unit">%</span></div></div>
+          <div class="metric"><div class="lbl">遥测总帧</div><div class="val" id="fps">0</div></div>
+        </div>
+      </section>
+      <!-- C2 导航流程 + 途径点 -->
+      <section class="card">
+        <div class="cardhead"><h2>导航任务</h2><span class="grow"></span>
+          <span class="hint">两段式：先解读确认，再执行</span></div>
+        <div class="flow" id="flow"></div>
+        <div class="wplist" id="wpList"></div>
+        <div class="row">
+          <input id="wx" type="number" step="0.05" placeholder="X" style="width:110px">
+          <input id="wy" type="number" step="0.05" placeholder="Y" style="width:110px">
+          <button id="btnAdd" class="primary">添加途径点</button>
+          <button id="btnWpDel" disabled title="两步删除：先在地图上点选一个途径点（变亮），再按这里删除">删除选中点</button>
+          <button id="btnMark" title="进入标障碍模式：点地图放置红框（可连续标多个），再点一次退出">标记障碍</button>
+          <button id="btnObsClear" title="清空已记忆的障碍（存在浏览器本地存储，刷新/断开都不会消失）">清除障碍</button>
+          <button id="btnObsClr" title="清空障碍记忆表">清障碍记忆</button>
+          <button id="btnOrg" title="把小车当前位置与朝向设为世界坐标原点（导航开始前摆好车就点这个）">⌖ 重置原点</button>
+          <span class="hint">已录入 <b id="wpCount">0</b> 个 · 单位：米 · 可用「点图选点」直接在地图上取坐标</span>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <span class="hint">路线</span>
+          <input id="routeName" list="routeList" placeholder="路线名" style="width:96px;padding:6px 8px"
+                 title="保存/载入/删除都以这个名字为准（可存多条不同路线）">
+          <datalist id="routeList"></datalist>
+          <button id="btnRouteSave" title="把当前途径点按输入框的名字存到浏览器（可存多条，换场地后同名载入重放）">💾 保存</button>
+          <button id="btnRouteLoad" title="载入输入框名字对应的路线，并逐条 $ADD 下发给车（需先连接）">📂 载入</button>
+          <button id="btnRouteDel" title="删除输入框名字对应的已存路线">🗑</button>
+        </div>
+      </section>
+      <!-- C3 控制按钮 -->
+      <section class="card">
+        <div class="cardhead"><h2>手动驾驶</h2><span class="grow"></span>
+          <span class="hint">速度</span>
+          <button class="gearbtn" data-gear="0">慢</button><button class="gearbtn" data-gear="1">中</button><button class="gearbtn" data-gear="2">快</button>
+          <span class="hint">括号内为实际发送帧</span></div>
+        <div class="pad" id="movpad">
+          <div class="cmd" data-cmd="$MV,FWD,1000"><div class="t">↑ 前进 1m</div><div class="s">$MV,FWD,1000</div></div>
+          <div class="cmd" data-cmd="$MV,BACK,1000"><div class="t">↓ 后退 1m</div><div class="s">$MV,BACK,1000</div></div>
+          <div class="cmd" data-cmd="$MV,LEFT,500"><div class="t">← 左移 50cm</div><div class="s">$MV,LEFT,500</div></div>
+          <div class="cmd" data-cmd="$MV,RIGHT,500"><div class="t">→ 右移 50cm</div><div class="s">$MV,RIGHT,500</div></div>
+          <div class="cmd" data-cmd="$MV,SPIN,90"><div class="t">↺ 转 +90°</div><div class="s">$MV,SPIN,90</div></div>
+          <div class="cmd" data-cmd="$MV,SPIN,-90"><div class="t">↻ 转 -90°</div><div class="s">$MV,SPIN,-90</div></div>
+          <div class="cmd" data-cmd="$MV,SPIN,135"><div class="t">↺ 转 +135°</div><div class="s">$MV,SPIN,135</div></div>
+          <div class="cmd" data-cmd="$MV,SPIN,-180"><div class="t">↻ 转 -180°</div><div class="s">$MV,SPIN,-180</div></div>
+          <div class="cmd" data-cmd="$MV,SPIN,720"><div class="t">↺ 转 720°</div><div class="s">$MV,SPIN,720</div></div>
+        </div>
+        <div class="custcap">自定义动作<span class="hint">距离/横移：米 · 角度：度</span></div>
+        <div class="custrow">
+          <span class="custgrp">
+            <input id="mvDist" type="number" step="0.1" placeholder="距离（负=后退）" title="单位：米；正=前进，负=后退">
+            <button id="btnMvDist" class="wbtn">走</button>
+          </span>
+          <span class="custgrp">
+            <input id="mvLat" type="number" step="0.1" placeholder="横移（正=向左）" title="单位：米；正=向左平移，负=向右平移（麦克纳姆横移）">
+            <button id="btnMvLat" class="wbtn">横移</button>
+          </span>
+          <span class="custgrp">
+            <input id="mvDeg" type="number" step="1" placeholder="角度（正=逆时针）" title="单位：度；正=逆时针，负=顺时针">
+            <button id="btnMvDeg" class="wbtn">转向</button>
+          </span>
+        </div>
+        <div class="flowbtns">
+          <div class="cmd" data-cmd="$ARM" style="border-color:#1c4a33;color:var(--ok)"><div class="t">① 解读待命</div><div class="s">$ARM</div></div>
+          <div class="cmd" data-cmd="$GO"  style="border-color:#1c4a6e;color:var(--acc)"><div class="t">② 开始导航</div><div class="s">$GO</div></div>
+          <div class="cmd" data-cmd="$STOP" style="border-color:#5c470e;color:var(--warn)"><div class="t">⏸ 暂停</div><div class="s">$STOP</div></div>
+        </div>
+        <button class="homebtn" id="btnHome" title="$ADD,0,0 → $ARM → $GO">⌂ 一键回原点</button>
+        <div class="custcap">视觉目标识别与智能任务执行（仅依靠FPGA实现）</div>
+        <div class="flowbtns">
+          <div class="cmd" data-cmd="$FIND"><div class="t">寻找红色物体并靠近</div><div class="s">$FIND</div></div>
+          <div class="cmd" data-cmd="$VSTOP"><div class="t">停止视觉任务</div><div class="s">$VSTOP</div></div>
+        </div>
+        <button class="estop" id="btnEstop">■ 急停 $ESTOP</button>
+      </section>
+
+
+    </div>
+  </div>
+
+  <!-- D 消息日志 -->
+  <section class="card logcard">
+    <div class="cardhead">
+      <h2>消息</h2><span class="grow"></span>
+      <span class="chips">
+        <span class="chip on" data-f="all">全部</span>
+        <span class="chip" data-f="sent">发送</span>
+        <span class="chip" data-f="ok">事件</span>
+        <span class="chip" data-f="warn">问题</span>
+      </span>
+    </div>
+    <div class="log" id="log"></div>
+    <div class="statline">
+      <span>帧计数 <b id="frames2">0</b></span>
+      <span>里程 <b id="odo">0.00</b> m</span>
+      <span>链路 <b id="linkstate">未连接</b></span>
+      <span>协议 $PING/$PONG · $TEL 43B @10Hz · 应答 8B</span>
+    </div>
+  </section>
+
+  <!-- E 高级区 -->
+  <details class="adv" id="dbgPanel" hidden>
+    <summary>调试工具<span class="hint" style="margin-left:8px">自定义帧 / 链路测试 / 遥测开关 —— 演示时无需展开</span></summary>
+    <div class="advbody">
+      <label class="hint" style="display:inline-flex;align-items:center;gap:8px"
+             title="实时避障由 FPGA 机载自主完成（拔掉电脑照样避障）；此项仅让网页在收到避障事件后停车重发路线，属演示/记忆优化用途。">
+        <input type="checkbox" id="chkReplan"> 上位机辅助重规划（默认关 · 实时避障在 FPGA，不依赖本机）
+      </label>
+      <!-- ★极性调试（2026-10-19）：默认折叠，只在标定时展开；开环下仅"驱动反向"有效 -->
+      <details class="adv" style="margin:2px 0 6px">
+      <summary>极性调试<span class="hint" style="margin-left:8px">标定用 · 开环模式下只需「驱动反向」</span></summary>
+      <div style="padding:8px 0 2px">
+      <div class="row" style="gap:10px">
+        <span class="hint" style="font-weight:700">编码器反向</span>
+        <label class="hint"><input type="checkbox" id="encInv0"> 左前</label>
+        <label class="hint"><input type="checkbox" id="encInv1"> 右前</label>
+        <label class="hint"><input type="checkbox" id="encInv2"> 左后</label>
+        <label class="hint"><input type="checkbox" id="encInv3"> 右后</label>
+        <button id="btnCfgEnc">下发</button>
+        <span class="hint">某轮飞转/不动 ⇒ 勾该轮再下发（速度环反馈极性）</span>
+      </div>
+      <div class="row" style="gap:10px">
+        <span class="hint" style="font-weight:700">驱动反向</span>
+        <label class="hint"><input type="checkbox" id="dirInv0"> 左前</label>
+        <label class="hint"><input type="checkbox" id="dirInv1"> 右前</label>
+        <label class="hint"><input type="checkbox" id="dirInv2"> 左后</label>
+        <label class="hint"><input type="checkbox" id="dirInv3"> 右后</label>
+        <button id="btnCfgDir">下发</button>
+        <span class="hint">某轮转向反了 ⇒ 勾该轮再下发（方向脚极性）</span>
+      </div></div></details>
+      <div class="row">
+        <input id="raw" placeholder="自定义帧（原始协议，单位 mm），例如 $ADD,1500,0">
+        <button id="btnSend">发送</button>
+      </div>
+      <div class="cmdgrid" id="cmds" style="opacity:.55">
+        <div class="cmd" data-cmd="$PING"><div class="t">链路测试</div><div class="s">$PING</div></div>
+        <div class="cmd" data-cmd="$STAT"><div class="t">立即回报位置</div><div class="s">$STAT</div></div>
+        <div class="cmd" data-cmd="$TEL,0"><div class="t">关闭遥测流</div><div class="s">$TEL,0</div></div>
+        <div class="cmd" data-cmd="$TEL,1"><div class="t">开启遥测流</div><div class="s">$TEL,1</div></div>
+        <div class="cmd" data-cmd="$CLR"><div class="t">清空途径点</div><div class="s">$CLR</div></div>
+      </div>
+    </div>
+  </details>
+</div>
+
+<script>
+"use strict";
+
+/* ================= 状态 ================= */
+var S = {
+  conn: false, transport: "ble",
+  x: 0, y: 0, th: 90, vx: 0, vy: 0, wp: 0, st: 0,   /* th=90：初始车头朝 +Y（上）*/
+  batt: null, battPct: null,
+  path: [], wps: [], obstacles: [],
+  evtLog: [],   /* ★v73b：避障复盘事件流（log() 全量记录，随 CSV 导出） */
+  frames: 0, frameTimes: [], bleChar: null, bleNotify: null,
+  port: null, reader: null, buf: "", mockTimer: null,
+  lastRx: 0, timedOut: false,
+  lowBatFired: false,          /* 低电只报警一次（>7.2V 重新布防） */
+  battLowCnt: 0,               /* 连续低电帧计数（防单帧误判） */
+  homePending: false,          /* 回原点任务：等 $DON 到达后补"转回初始朝向" */
+  pickMark: null,              /* 点图选点最近一次的落点（画在地图上作反馈） */
+  pickCnt: 0, pickMarkAt: 0,   /* 选点计数与时刻（点击涟漪反馈用） */
+  odoMM: 0                     /* 累计里程（由相邻遥测点距离积分） */
+};
+
+/* ===== 障碍记忆：localStorage 持久化 + 30cm 去重 ===== */
+var OBS_KEY = "fpga_nav_obstacles_v1";
+function obsLoad(){
+  try { S.obstacles = JSON.parse(localStorage.getItem(OBS_KEY) || "[]") || []; } catch(e){ S.obstacles = []; }
+}
+function obsSave(){ try { localStorage.setItem(OBS_KEY, JSON.stringify(S.obstacles)); } catch(e){} }
+/* ---- 遇障重规划（本轮）2002 ---- */
+var replanCount = 0, replanBusy = false;
+/* 纯函数：按当前位姿取剩余途径点重组路径；首段被障碍挡则插入绕行点（便于单测） */
+function buildReplan(wps, wpCur, x, y){
+  var idx = Math.max(0, (wpCur ? wpCur - 1 : 0));
+  var remain = wps.slice(idx);
+  if (!remain.length && wps.length) remain = [wps[wps.length - 1]];
+  if (!remain.length) return { list: [], hit: null };
+  var hit = segBlocked(x, y, remain[0].x, remain[0].y);
+  var list = [];
+  if (hit){
+    var d = detourOf(hit, x, y, remain[0].x, remain[0].y);
+    list.push({ x: Math.round(d.x), y: Math.round(d.y), d: 1 });
+  }
+  remain.forEach(function(p){ list.push({ x: p.x, y: p.y }); });
+  return { list: list, hit: hit };
+}
+function tryReplan(){
+  if (replanBusy){ return; }
+  if (replanCount >= 3){ log("本轮重规划已达 3 次上限，改人工处理", "err"); return; }
+  var r = buildReplan(S.wps, S.wp, S.x, S.y);
+  if (!r.list.length){ log("没有剩余途径点可重规划", "warn"); return; }
+  replanBusy = true; replanCount++;
+  log("遇障 → 自动重规划（第 " + replanCount + " 次）：先停车", "warn");
+  send("$STOP");
+  setTimeout(function(){
+    send("$CLR");
+    S.wps = r.list.slice();
+    r.list.forEach(function(p){ var fw = userToFw(p.x, p.y); sendAdd(fw); });
+    renderWps(); draw();
+    log("新路径已下发：" + r.list.length + " 点" + (r.hit ? "（含绕行点 " + (r.list[0].x/1000) + "," + (r.list[0].y/1000) + "）" : ""), "ok");
+    setTimeout(function(){ send("$ARM"); }, 300);
+    setTimeout(function(){ send("$GO"); replanBusy = false; }, 800);
+  }, 600);
+}
+
+function obsAdd(x, y, src){
+  for (var i = 0; i < S.obstacles.length; i++){
+    var o = S.obstacles[i], dx = o.x - x, dy = o.y - y;
+    if (dx*dx + dy*dy < 300*300){          /* 30cm 内视为同一障碍 */
+      log("障碍与已记忆的 #" + (i+1) + " 重复，不重复标记", "mut");
+      return false;
+    }
+  }
+  S.obstacles.push({x:x, y:y});
+  obsSave(); draw();
+  log("障碍已记忆 #" + S.obstacles.length + " (" + (x/1000) + "," + (y/1000) + ")m · " + src, "warn");
+  return true;
+}
+
+/* 状态码 → 名称/徽章色（对齐 nav_ctrl：0 IDLE 1 NAV 2 ARR 3 AVOID 4 FAULT 5 ARMED） */
+var ST_NAME = ["待机", "导航执行中", "已到达", "避障中", "故障", "已待命"];
+var ST_CLS  = ["st-idle","st-nav","st-arr","st-avd","st-flt","st-arm"];
+
+function $(id){ return document.getElementById(id); }
+function now(){ var d = new Date();
+  return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0"); }
+
+/* ================= 日志 ================= */
+var logFilter = "all";
+var _logWinT = 0, _logWinN = 0;
+function log(msg, cls){
+  /* ★2026-10-22 日志限速：每秒最多 25 条（异常刷屏时保护主线程，超出直接丢弃）*/
+  var nowT = Date.now();
+  /* ★v73b：事件流全量记录（不限速），随 CSV 导出供避障复盘 */
+  try{
+    S.evtLog = S.evtLog || [];
+    S.evtLog.push({t: nowT, msg: msg});
+    if (S.evtLog.length > 2000) S.evtLog.splice(0, S.evtLog.length - 2000);
+  }catch(e){}
+  if (nowT - _logWinT > 1000){ _logWinT = nowT; _logWinN = 0; }
+  if (++_logWinN > 25){ return; }
+  var box = $("log");
+  var div = document.createElement("div");
+  if (cls) div.className = cls;
+  div.setAttribute("data-t", cls||"mut");
+  div.innerHTML = '<span class="tm">'+now()+'</span>'+msg;
+  box.appendChild(div);
+  while (box.childNodes.length > 300) box.removeChild(box.firstChild);
+  applyFilter(div);
+  box.scrollTop = box.scrollHeight;
+}
+function applyFilter(div){
+  var t = div.getAttribute("data-t") || "mut";
+  var show = (logFilter==="all") ||
+             (logFilter==="sent" && t==="sent") ||
+             (logFilter==="ok" && (t==="ok")) ||
+             (logFilter==="warn" && (t==="warn"||t==="err"));
+  div.classList.toggle("hid", !show);
+}
+document.querySelectorAll(".chip").forEach(function(el){
+  el.addEventListener("click", function(){
+    document.querySelectorAll(".chip").forEach(function(c){ c.classList.remove("on"); });
+    el.classList.add("on");
+    logFilter = el.getAttribute("data-f");
+    document.querySelectorAll("#log > div").forEach(applyFilter);
+  });
+});
+
+function setStatus(text, cls){
+  $("status").innerHTML = '<span class="dot '+(cls||"")+'"></span>'+text;
+  $("topdot").className = "dot " + (cls||"");
+  $("linkstate").textContent = text;
+}
+
+/* ================= 发送 ================= */
+/* BLE 单包 ≤ 20 字节（默认 ATT MTU 23）⇒ 长帧自动分包，避免超长写入被拒 */
+var _bleQueue = Promise.resolve();   /* ★全局 BLE 写队列（严格串行，防 GATT 并发冲突）*/
+var _bleErrT = 0;                    /* 写错误日志节流 */
+function chunkBytes(bytes, n){
+  var out = [];
+  for (var i = 0; i < bytes.length; i += n) out.push(bytes.slice(i, i + n));
+  return out;
+}
+/* ★2026-10-22 $ADD 确认重发：蓝牙上 $ADD 约 1/3 概率丢包（实测固件只有 1 个点、网页有 2 个）。
+   发送后等 $ADD,n 应答；700ms 没应答就重发，最多 3 次。 */
+function sendAdd(fw){
+  var s = "$ADD," + fw.x + "," + fw.y;
+  var it = { s: s, tries: 0, done: false, timer: null };
+  S.addPending = S.addPending || [];
+  S.addPending.push(it);
+  (function fire(){
+    if (it.done) return;
+    it.tries++;
+    send(s);
+    it.timer = setTimeout(function(){
+      if (it.done) return;
+      if (it.tries < 3){ log("$ADD 未收到应答，重发第 " + it.tries + " 次", "warn"); fire(); }
+      else log("$ADD 重发 3 次仍无应答 —— 该点可能没进车，请核对后再 $GO", "err");
+    }, 700);
+  })();
+}
+
+function send(str){
+  /* ★2026-10-22 发 $GO 时打印将要执行的目标点：网页本地列表与固件队列可能因丢命令错位
+     （实测出现过"列表显示 0.5,1 而车实际去 (0,1)"），打印出来可一眼核对。*/
+  if (str === "$GO"){
+    log("目标点清单（本地）：" + (S.wps.length
+      ? S.wps.map(function(p,i){ return (i+1)+"("+(p.x/1000)+","+(p.y/1000)+")"; }).join(" ")
+      : "（空 —— 固件里可能还有旧点，建议先 $CLR）"), "warn");
+  }
+  if (!S.conn){ log("未连接，无法发送："+str, "err"); return; }
+  var data = str + "\n";
+  if (S.transport === "ble"){
+    if (!S.bleChar){ log("蓝牙写特征值未就绪", "err"); return; }
+    /* ★2026-10-21 根因修复：原实现每次 send() 各起一条本地链 ⇒ 并发写 ⇒
+       Chrome 抛 "GATT operation already in progress" ⇒ 命令整批丢失（车乱走/遥测停）。
+       改为**全局串行队列**：所有写严格排队，单块失败只跳过该块、不堵后续。 */
+    var parts = chunkBytes(new TextEncoder().encode(data), 20);
+    parts.forEach(function(part, k){
+      _bleQueue = _bleQueue.then(function(){
+        return new Promise(function(r){ setTimeout(r, k === 0 ? 0 : 15); });   /* 包间隔 15ms */
+      }).then(function(){
+        return S.bleChar.writeValueWithoutResponse ? S.bleChar.writeValueWithoutResponse(part)
+                                                   : S.bleChar.writeValue(part);
+      }).catch(function(e){
+        if (!_bleErrT || Date.now() - _bleErrT > 1000){
+          log("蓝牙写重试：" + e.message, "warn"); _bleErrT = Date.now();
+        }
+      });
+    });
+    _bleQueue.then(function(){ log("发送　"+str, "sent"); });
+  } else if (S.transport === "serial"){
+    if (!S.port){ log("串口未打开", "err"); return; }
+    var w = S.port.writable.getWriter();
+    w.write(new TextEncoder().encode(data)).then(function(){
+      w.releaseLock(); log("发送　"+str, "sent");
+    }).catch(function(e){ log("串口写失败："+e.message, "err"); });
+  } else {
+    log("模拟发送　"+str, "sent");
+    if (str === "$PONG") return;
+    setTimeout(function(){ mockReply(str); }, 120);
+  }
+}
+
+/* 手动动作统一入口：若车正在导航/避障（st=1/3），先 $STOP 退出导航再执行，
+   避免"悄悄中断任务"（固件收到 $MV 会切到手动模式并结束当前导航） */
+function manualMove(frame){
+  if (S.st === 1 || S.st === 3){
+    send("$STOP");
+    log("当前正在导航 —— 已先发 $STOP 退出导航，再执行手动动作", "warn");
+  }
+  /* ★2026-10-21 限幅：平移 ≤3000mm、角度 ≤1080°（防误填单位造成"长跑"，超时兜底会长达数分钟）*/
+  var m = /^(\$MV,(?:FWD|BACK|LEFT|RIGHT)),(\d+)$/.exec(frame);
+  if (m && +m[2] > 3000){ frame = m[1] + ",3000"; log("平移距离已限幅到 3m", "warn"); }
+  var a = /^(\$MV,SPIN),(-?\d+)$/.exec(frame);
+  if (a && Math.abs(+a[2]) > 1080){ frame = a[1] + "," + (1080 * Math.sign(+a[2])); log("旋转角度已限幅到 ±1080°", "warn"); }
+  send(frame);
+}
+
+/* ================= 连接：蓝牙 ================= */
+var SVC = "9ecadc24-0ee5-a9e0-93f3-a3b50100406e";
+
+function connBLE(){
+  if (!navigator.bluetooth){
+    log("此浏览器不支持 Web Bluetooth（需要电脑版 Chrome / Edge，且页面为 https 或 localhost）", "err");
+    return;
+  }
+  log("正在搜索蓝牙设备，请在弹窗里选择 ATK-BLE02 …", "mut");
+  var opts = { optionalServices: [SVC, "generic_access", "generic_attribute"] };
+  if (!$("showAll").checked) opts.filters = [{ namePrefix: "ATK" }, { namePrefix: "BLE" }];
+  else opts.acceptAllDevices = true;
+
+  navigator.bluetooth.requestDevice(opts).then(function(dev){
+    log("已选择设备："+dev.name, "mut");
+    $("devName").textContent = dev.name || "BLE 设备";
+    dev.addEventListener("gattserverdisconnected", onBleLost);   /* ★ 链路掉线自动识别 */
+    _bleQueue = Promise.resolve();   /* ★重置写队列（断开后旧链不再阻塞新会话）*/
+    return dev.gatt.connect();
+  }).then(function(server){
+    log("已连接。提示：若刚上电，请静置 3 秒（IMU 零偏自标定）再操作", "mut");
+    /* ★2026-10-22 连接即清队列：网页刷新后本地列表归零，但固件队列会残留上一轮的点
+       （实测累计到 13 个点，导致"车走的是旧点"）。连上先清一次，从干净状态开始。 */
+    setTimeout(function(){
+      if (!S.conn) return;
+      S.wps = []; renderWps(); send("$CLR");
+      log("已自动清空航点队列（避免与上一轮残留叠加）—— 现在重新录入目标点", "warn");
+    }, 500);
+    return server.getPrimaryServices();
+  }).then(function(services){
+    var jobs = services.map(function(svc){
+      return svc.getCharacteristics().then(function(chs){ return { svc: svc, chs: chs }; });
+    });
+    return Promise.all(jobs);
+  }).then(function(list){
+    var w = null, n = null;
+    list.forEach(function(o){
+      o.chs.forEach(function(c){
+        var p = c.properties;
+        if (!w && (p.write || p.writeWithoutResponse)) w = c;
+        if (!n && (p.notify || p.indicate)) n = c;
+        log("特征 "+c.uuid+"  ["+(p.write?"写 ":"")+(p.writeWithoutResponse?"无应答写 ":"")+(p.notify?"通知":"")+"]", "mut");
+      });
+    });
+    if (!w) throw new Error("没找到可写特征值");
+    S.bleChar = w;
+    log("写入通道："+w.uuid, "ok");
+    if (!n){
+      log("警告：没找到通知特征值，收不到数据", "warn");
+      S.conn = true; onConnected();
+    } else {
+      S.bleNotify = n;
+      return n.startNotifications().then(function(){
+        n.addEventListener("characteristicvaluechanged", function(ev){
+          feed(new TextDecoder().decode(ev.target.value));
+        });
+        log("通知通道："+n.uuid+"（已订阅）", "ok");
+        S.conn = true; onConnected();
+        /* ★连接后自动链路确认：880ms 后发 $PING（等通知通道稳定）——
+           同时"唤醒"固件写入通道，避免首条控制命令偶发丢失 */
+        setTimeout(function(){ if (S.conn) send("$PING"); }, 880);
+        /* 2026-10-21 回退：自动 $ORG 在实测中引发"归零后里程不积分"（原因待查），
+           恢复手动 ⌖ 流程：连接 → 摆好车 → 按「⌖ 重置原点」→ 开始 */
+      });
+    }
+  }).catch(function(e){
+    /* ★2026-10-22 自动重试一次：模块常残留上一次 GATT 链接 ⇒ 首连报
+       "GATT Server is disconnected / Cannot retrieve services"。1.5s 后自动重连一次。*/
+    if (/disconnect|retrieve services|not connected/i.test(e.message)){
+      log("蓝牙连接失败：" + e.message + " —— 模块可能残留上次链接：先点「断开」等 3 秒，或给车上电重启后再点「连接」", "err");
+      return;
+    }
+    log("蓝牙连接失败："+e.message, "err");
+    setStatus("连接失败", "err");
+  });
+}
+
+/* ================= 连接：串口 ================= */
+function connSerial(){
+  if (!navigator.serial){ log("此浏览器不支持 Web Serial（需要电脑版 Chrome / Edge）", "err"); return; }
+  navigator.serial.requestPort().then(function(port){
+    return port.open({ baudRate: 115200 }).then(function(){ return port; });
+  }).then(function(port){
+    S.port = port;
+    log("串口已打开 115200 8N1", "ok");
+    S.conn = true; onConnected();
+    serialReadLoop(port);
+  }).catch(function(e){ log("串口失败："+e.message, "err"); });
+}
+
+function serialReadLoop(port){
+  if (!port.readable) return;
+  var reader = port.readable.getReader();
+  (function pump(){
+    reader.read().then(function(res){
+      if (res.done){ try{ reader.releaseLock(); }catch(e){} return; }
+      feed(new TextDecoder().decode(res.value));
+      pump();
+    }).catch(function(e){
+      log("串口读取中断："+e.message, "warn");
+      try{ reader.releaseLock(); }catch(e2){}
+    });
+  })();
+}
+
+/* ================= 连接：模拟 ================= */
+/* ★ 模拟运动学与真车导航策略一致：**先原地对准目标 → 再沿车头直线走**，
+   到点短停；轨迹 = 直线段（不是场矢量的弧线）。手动 $MV 同理。 */
+
+var mockTelOn = 1;    // 模拟遥测开关（$TEL,0/1）
+var mock = { x:0, y:0, th:0, vx:0, vy:0,
+             mode:"idle",          // idle / armed(已待命) / align(对准中) / cruise(直行/平移中)
+             alignErr:0,           // 剩余需转角度（°，正=逆时针）
+             cruiseRemain:0,       // 剩余直行距离（mm）
+             mvVec:null,           // $MV 平移方向单位向量（车头不转，麦轮横移）
+             afterAlign:"idle",    // 对准完成后的去向：导航=cruise，纯转向=idle
+             done:false,           // ★ 全部途径点已到达 ⇒ 保持 st=2"已到达"（与真机 S_ARR 一致）
+             wpIdx:0, arriveHold:0 };
+
+var M_SPEED = 250;    // mm/s，与 nav_ctrl 计划值一致
+var M_SPD   = 90;     // °/s 对准转速
+var MAP = null;       // draw() 留下的地图映射参数（点图反解用）
+
+function mockTick(){                       // 100ms 一帧
+  var vx = 0, vy = 0, st;
+  if (mock.mode === "align"){
+    var sd = Math.min(M_SPD/10, Math.abs(mock.alignErr));   // 每帧转 9°
+    if (mock.alignErr > 0) mock.th = (mock.th + sd) % 360;
+    else                   mock.th = (mock.th - sd + 360) % 360;
+    mock.alignErr -= (mock.alignErr > 0 ? sd : -sd);
+    if (Math.abs(mock.alignErr) < 0.5){
+      mock.alignErr = 0;
+      mock.mode = mock.afterAlign || "cruise";   /* 纯 $MV,SPIN 转完回 idle；导航转完进直行 */
+    }
+  }
+  else if (mock.mode === "cruise" && mock.arriveHold === 0){
+    var md = Math.min(M_SPEED/10, mock.cruiseRemain);
+    var ux, uy;
+    if (mock.mvVec){ ux = mock.mvVec.x; uy = mock.mvVec.y; }   // $MV 平移：车头不转
+    else { ux = Math.cos(mock.th*Math.PI/180); uy = Math.sin(mock.th*Math.PI/180); } // 导航：沿车头
+    mock.x += ux * md;
+    mock.y += uy * md;
+    vx = Math.round(ux * md * 10);
+    vy = Math.round(uy * md * 10);
+    mock.cruiseRemain -= md;
+    if (mock.cruiseRemain <= 0){
+      if (mock.mvVec){
+        mock.mode = "idle";                 /* $MV 平移到位：立即停，无 0.3s 冻结、无误报 DON */
+      } else {
+        mock.arriveHold = 3;                /* 导航到点：短停后报 DON、下一段 */
+      }
+    }
+  }
+  else if (mock.arriveHold > 0){
+    mock.arriveHold--;
+    if (mock.arriveHold === 0){
+      feed("$DON," + pad(Math.min(mock.wpIdx, Math.max(S.wps.length-1,0)), 2) + "\n");   /* ★0 基，与固件一致 */
+      mock.wpIdx++;
+      startNextLeg();
+    }
+  }
+
+  mock.x = Math.max(-32000, Math.min(32000, mock.x));
+  mock.y = Math.max(-32000, Math.min(32000, mock.y));
+  /* mock 运行在固件系 ⇒ 转用户系再进 S（与真机 $TEL 同一路径） */
+  var mu = fwToUser(mock.x, mock.y);
+  S.x = Math.round(mu.x); S.y = Math.round(mu.y);
+  S.th = Math.round(norm360(mock.th + 90)); S.vx = vx; S.vy = vy;
+  st = (mock.mode==="align"||mock.mode==="cruise") ? 1
+     : (mock.mode==="armed") ? 5
+     : (mock.arriveHold>0 ? 1 : 0);
+  if (mock.mode==="cruise" && mock.arriveHold>0) st = 1;
+  if (mock.done) st = 2;                   /* ★ 全部到达 ⇒ 保持"已到达"（与真机 S_ARR 一致） */
+  S.st = st;
+}
+
+function startNextLeg(){                   // 下一段：先对准，再直行
+  mock.mvVec = null;                       // ★ 清 $MV 平移向量残留（否则导航沿旧方向直走）
+  mock.afterAlign = "cruise";
+  if (mock.wpIdx >= S.wps.length){ mock.mode = "idle"; mock.done = true; S.st = 2; return; }   /* ★ 与真机 S_ARR 一致 */   /* ★ 全部走完 ⇒ 收工（越界保护） */
+  var t = userToFw(S.wps[mock.wpIdx].x, S.wps[mock.wpIdx].y);   /* 途径点用户系 → 固件系 */
+  var dx = t.x - mock.x, dy = t.y - mock.y;
+  var want = Math.atan2(dy, dx) * 180 / Math.PI;          // 目标方位角
+  mock.alignErr = ((want - mock.th) % 360 + 540) % 360 - 180;  // 归到 ±180
+  if (Math.abs(mock.alignErr) < 0.5){ mock.alignErr = 0; mock.mode = "cruise"; }
+  else mock.mode = "align";
+  mock.cruiseRemain = Math.sqrt(dx*dx + dy*dy);
+}
+
+function mockTelFrame(){
+  var st = S.st;
+  var wp = (mock.mode==="cruise"||mock.mode==="align") ? Math.min(mock.wpIdx, Math.max(S.wps.length-1,0)) : 0;   /* ★0 基，与固件一致 */
+  /* ★ 用固件系值组帧 —— parseTel 会做 fw→user 换算，与真机数据同一条路，避免二次换算 */
+  return "$TEL," + sgn4(mock.x) + "," + sgn4(mock.y) + "," + pad(Math.round(mock.th*10)%3600, 4)
+       + "," + pad(wp, 2) + "," + st + "," + sgn4(S.vx) + "," + sgn4(S.vy) + ",82";
+}
+
+function connMock(){
+  S.conn = true; onConnected();
+  log("模拟模式已启动（转向-直行运动学，与真车策略一致）", "warn");
+  S.mockTimer = setInterval(function(){
+    if (!mockTelOn) return;
+    mockTick();
+    feed(mockTelFrame() + "\n");
+  }, 100);
+}
+
+/* 模拟 FPGA 应答（★补 v1 缺口：此前 mockReply 未定义，模拟模式点任何按钮都"没反应"）*/
+function mockReply(str){
+  var m;
+  if (str === "$PING"){ feed("$PONG\n"); return; }
+  if (str === "$STAT"){ feed(mockTelFrame() + "\n"); return; }
+  if ((m = str.match(/^\$ADD,(-?\d+),(-?\d+)$/))){
+    mock.wpIdx = 0; mock.done = false;
+    feed("$ADD," + pad(S.wps.length, 2) + "\n");
+    return;
+  }
+  if (str === "$CLR"){ if (!S.homePending) S.wps = []; mock.wpIdx = 0; mock.mode="idle"; mock.done=false; renderWps(); draw(); feed("$CLR,00\n"); return; }
+  if (str === "$ARM"){
+    mock.mode = "armed"; mock.cruiseRemain = 0; mock.mvVec = null; mock.done = false;
+    feed("$RDY," + pad(S.wps.length, 2) + "\n");
+    return;
+  }
+  if (str === "$GO"){
+    mock.done = false;
+    feed("$RUN,00\n");
+    startNextLeg();
+    return;
+  }
+  if (str === "$STOP"){ mock.mode="idle"; mock.cruiseRemain=0; mock.alignErr=0; mock.mvVec=null; feed("$STP,00\n"); return; }
+  if (str === "$ESTOP"){ mock.mode="idle"; mock.cruiseRemain=0; mock.alignErr=0; mock.mvVec=null; feed("$STP,00\n"); return; }
+  if ((m = str.match(/^\$MV,([A-Z]+),(-?\d+)$/))){
+    var dir = m[1], val = parseInt(m[2], 10);
+    if (dir === "SPIN"){
+      /* 原地旋转：正=逆时针（与真车 spin_neg 语义一致）；转完回 idle，不误报 $DON */
+      mock.afterAlign = "idle";
+      mock.mode = "align"; mock.alignErr = val; mock.cruiseRemain = 0; mock.mvVec = null;
+    } else {
+      /* 平移：车头不转，沿车体方向直行（麦轮特性）—— 与真车 M_DIST 行为一致 */
+      var rad = mock.th * Math.PI/180;
+      var vec = {
+        FWD:  { x: Math.cos(rad),       y: Math.sin(rad) },
+        BACK: { x: -Math.cos(rad),      y: -Math.sin(rad) },
+        LEFT: { x: -Math.sin(rad),      y: Math.cos(rad) },
+        RIGHT:{ x: Math.sin(rad),       y: -Math.cos(rad) }
+      }[dir];
+      if (!vec){ log("模拟：未知方向 " + dir, "mut"); return; }
+      mock.mvVec = vec;
+      mock.mode = "cruise";
+      mock.cruiseRemain = Math.abs(val);
+    }
+    feed("$MOV,00\n");
+    return;
+  }
+  if ((m = str.match(/^\$TEL,([01])$/))){ mockTelOn = (m[1] === "1"); return; }
+  log("模拟模式：未模拟该指令的应答 " + str, "mut");
+}
+
+function onConnected(){
+  $("btnConn").disabled = true; $("btnDisc").disabled = false;
+  var tn = $("transport").value==="ble"?"蓝牙":$("transport").value==="serial"?"串口":"模拟";
+  setStatus("已连接 · " + tn, "on");
+  $("cmds").style.opacity = 1;
+  S.lastRx = Date.now(); S.timedOut = false;
+  if (S.transport === "mock"){
+    log("模拟链路就绪（合成数据）—— 模拟轨迹是理想插值，不会真的检测/绕开障碍；避障记忆与重规划需真机", "warn");
+  } else {
+    log("链路已建立，自动发送 $PING 自检…", "ok");
+    setTimeout(function(){ if (S.conn) send("$PING"); }, 400);
+  }
+}
+
+/* 蓝牙掉线（模块断电 / 超出范围 / 被复位）：自动复位界面，避免"看着连着其实发不出去" */
+function onBleLost(){
+  if (!S.conn) return;
+  try{ kbStop(); }catch(e){}
+  S.homePending = false;                           /* ★ 掉线后不再等待回转 */
+  S.conn = false; S.bleChar = null; S.bleNotify = null;
+  $("btnConn").disabled = false; $("btnDisc").disabled = true;
+  $("devName").textContent = "未连接设备";
+  setStatus("连接已断开", "err");
+  /* ★2026-10-22 注意：浏览器要求"选择设备"必须由用户手势触发（弹窗），
+     代码里自动 .click() 会被拒绝（实测 failed to execute 'requestDevice':
+     Must be handling a user gesture）⇒ 这里只做醒目提示，不做自动点击。*/
+  log("蓝牙链路已断开 —— 请手动点右上角「连接」重新连接（浏览器要求手动操作）", "err");
+  $("btnConn").style.outline = "2px solid var(--err)";
+}
+
+function disconnect(){
+  S._manualDisc = true;                            /* ★主动断开：不自动重连 */
+  setTimeout(function(){ S._manualDisc = false; }, 3000);
+  if (S.mockTimer){ clearInterval(S.mockTimer); S.mockTimer = null; }
+  try{ kbStop(); }catch(e){}                       /* ★ 清键盘连续模式（防重连后按键被误判为"已按着"） */
+  S.homePending = false;                           /* ★ 断开后不再等待回转（防下次任务的 $DON 触发意外转向） */
+  try{ estopArm = 0; }catch(e){}
+  try{ if (S.bleChar && S.bleChar.service.device.gatt.connected) S.bleChar.service.device.gatt.disconnect(); }catch(e){}
+  try{ if (S.port) S.port.close(); }catch(e){}
+  S.conn = false; S.bleChar = null; S.bleNotify = null; S.port = null;
+  $("btnConn").disabled = false; $("btnDisc").disabled = true;
+  $("devName").textContent = "未连接设备";
+  setStatus("未连接", "");
+  log("已断开", "mut");
+}
+
+/* ================= 接收解析 ================= */
+function feed(chunk){
+  S.buf += chunk;
+  var i;
+  while ((i = S.buf.indexOf("\n")) >= 0){
+    var line = S.buf.slice(0, i).replace(/\r/g, "");
+    S.buf = S.buf.slice(i + 1);
+    if (line.length) onLine(line);
+  }
+  if (S.buf.length > 600) S.buf = S.buf.slice(-200);
+}
+
+var TAG = {
+  ADD:"途径点已录入", CLR:"途径点已清空", RDY:"解读完成，待命中",
+  RUN:"开始导航", STP:"已停止", DON:"已到达", ERR:"指令被拒绝",
+  WPT:"从该点续跑", MOV:"动作已接受", EVT:"事件", UNK:"未知应答"
+};
+
+function onLine(line){
+  S.frames++;
+  S.lastRx = Date.now();
+  var t = Date.now();
+  S.frameTimes.push(t);
+  while (S.frameTimes.length && t - S.frameTimes[0] > 2000) S.frameTimes.shift();
+
+  if (line.indexOf("$TEL,") === 0){ parseTel(line); return; }
+  /* ★v74：避障状态机透视帧（须在通用 $XXX 匹配之前拦截，否则会被当应答帧打进日志） */
+  if (line.indexOf("$DBG,") === 0){ parseDbg(line); return; }
+  if (line === "$PONG"){ log("链路正常（收到 PONG）", "ok"); return; }
+  if (line.charAt(0) === "$"){
+    var m = line.match(/^\$([A-Z]{3}),(\d{1,3})/);
+    if (m){
+      var name = TAG[m[1]] || m[1];
+      var cls = (m[1]==="ERR") ? "err" : (m[1]==="EVT") ? "warn" : "ok";
+      if (m[1]==="DON"){ log("已到达（第 " + (parseInt(m[2],10)+1) + " 个点）", cls); }
+      else { log(name + "（" + m[1] + "," + m[2] + "）", cls); }
+      if (m[1]==="RDY"){ S.wpsPending = false; }
+      if (m[1]==="ADD" && S.addPending && S.addPending.length){
+        var ack = S.addPending.shift(); ack.done = true; clearTimeout(ack.timer);
+      }
+      /* ★2026-10-22 修"网页列表与固件队列错位"的根因：
+         固件在导航中（S_NAV）拒绝 $ADD（回 $ERR,01），但网页是乐观追加 ⇒ 本地多出点、固件没有
+         ⇒ 实测"网页 3 个点，车只走 1 个点就停"。收到拒绝就回滚最后一条。 */
+      if (m[1]==="ERR" && parseInt(m[2],10) === 1 && S.wps.length){
+        var drop = S.wps.pop();
+        renderWps(); draw();
+        log("固件拒绝 $ADD（导航中不允许加点）—— 已撤销本地这一条 (" +
+            (drop.x/1000) + "," + (drop.y/1000) + ")，请先停止后再加点", "err");
+      }
+      /* ★2026-10-22 队列核对：$GO 的应答里带固件队列点数（v38+）。与本地列表不一致 ⇒ 说明
+         $ADD 有丢包 ⇒ 车走的是别的点（实测"列表 2 点、车只走 1 点就停"）。 */
+      if (m[1]==="RUN"){
+        var fwN = parseInt(m[2], 10);
+        if (fwN !== S.wps.length)
+          log("⚠ 队列不一致：固件里 " + fwN + " 个点，本地 " + S.wps.length + " 个 —— $ADD 有丢包，建议 $CLR 后重发", "err");
+        else
+          log("队列一致：固件/本地均 " + fwN + " 个点", "ok");
+      }
+      if (m[1]==="CLR" && !S.homePending){ S.wps = []; renderWps(); draw(); }   /* 回原点宏期间不清（宏稍后自录原点） */
+      /* 回原点第二段：位置到达后，自动转回初始朝向（用户系 90° = 固件系 0°，走最短方向） */
+      if (m[1]==="DON" && S.homePending){
+        S.homePending = false;
+        var t0 = Math.round(norm360(S.th - 90));           // 固件系真值角（取整！浮点会毁掉指令）
+        var spin = (t0 === 0) ? null : (t0 <= 180 ? -t0 : 360 - t0);
+        spin = (spin === null || Math.round(spin) === 0) ? null : Math.round(spin);
+        if (spin === null){ log("已回原点，朝向本来就是初始方向，无需回转", "ok"); }
+        else { send("$MV,SPIN," + spin); log("已回原点，正在转回初始朝向 (+Y)", "ok"); }
+      }
+      /* P4 避障事件：01=障碍偏左 02=障碍偏右 ⇒ 在车前方 45cm 处自动记忆障碍；03=被围死 */
+      /* ★v68：250→450。真实几何 = 半车长 150 + 触发距离 300 = 450；原 250 系统性偏近 200mm */
+      if (m[1]==="EVT"){
+        if (m[2]==="01" || m[2]==="02"){
+          log("避障触发（障碍偏" + (m[2]==="01"?"左":"右") + "）—— 车端 FPGA 已开始绕行，正在记录障碍位置", "warn");
+          var evr = S.th * Math.PI / 180;
+          obsAdd(Math.round(S.x + Math.cos(evr)*450), Math.round(S.y + Math.sin(evr)*450),
+                 "车检测·障碍偏" + (m[2]==="01"?"左":"右"));
+          if ($("chkReplan").checked && S.wps.length) tryReplan();
+        } else if (m[2]==="04"){
+          log("扫描判堵（v73 观测）—— 该角点声呐近帧≥2，FPGA 换角点或降级", "warn");
+        } else if (m[2]==="03"){
+          log("连续 3 次避障未通过，判定被围死 —— 车已停车待人工", "err");
+        } else if (m[2]==="05"){
+          log("侧移受阻（<20cm）—— 放弃该方向，重新扫描选向（★v74 观测）", "warn");
+        }
+        /* ★v73b：原 "04"=打滑 分支为死代码（固件从未发 EVT,04；且与 v73 扫描判堵撞号）——已删 */
+      }
+    } else {
+      log("收到 " + line, "mut");
+    }
+    renderFlow();
+    return;
+  }
+  if (/^P\d=/.test(line)){ log("诊断流 " + line, "mut"); return; }
+  log("收到 " + line, "mut");
+}
+
+/* ★v74：$DBG 避障状态机透视帧解析（与固件 v74 配套）
+   字段：phase,sub,step,near,far,unk,samp_cm,odo_deg,w_dps,gear
+   相位/子状态变化时打一条日志（天然节流，扫一口气可见状态机走位） */
+var AV_PHASE_NAME = {0:"停稳",1:"旋转",2:"侧移",3:"转回",4:"平行",5:"扫描",6:"复测"};
+function parseDbg(line){
+  var f = line.slice(5).split(",");
+  if (f.length < 10) return;
+  var d = { p:+f[0], s:+f[1], t:+f[2], n:+f[3], fr:+f[4], u:+f[5],
+            c:+f[6], o:parseInt(f[7],10), w:parseInt(f[8],10), g:+f[9], tms:Date.now() };
+  if (!isFinite(d.o) || !isFinite(d.w)) return;
+  S.dbg = d;
+  if (d.p !== S._dbgP || d.s !== S._dbgS){
+    S._dbgP = d.p; S._dbgS = d.s;
+    var nm = AV_PHASE_NAME[d.p] || d.p;
+    log("状态机→" + nm + "(ph" + d.p + ") sub=" + d.s + " step=" + d.t
+        + " 采样=" + d.c + "cm 航向账=" + d.o + "° w=" + d.w + "°/s", "mut");
+  }
+}
+function parseTel(line){
+  var f = line.slice(5).split(",");
+  if (f.length < 6) return;
+  var x = parseInt(f[0], 10), y = parseInt(f[1], 10);
+  var th = parseInt(f[2], 10) / 10, wp = parseInt(f[3], 10), st = parseInt(f[4], 10);
+  if (!isFinite(x) || !isFinite(y)) return;
+  /* 固件系 → 用户系（+Y=初始前方） */
+  var u = fwToUser(x, y);
+  /* ★2026-10-21 坏帧过滤改"孤立往返跳"（先过滤、后计里程 ⇒ 里程不被坏帧污染）：
+     坏帧特征是"出去又回来"。旧逻辑以"最后接受位置"为参照 ⇒ 正常运动中丢 1 帧后，
+     后续帧全被误拒 ⇒ 真实位移永久丢失（方形第 4 段短 0.2m 的根因）。
+     新逻辑：只拒"与前一原始帧跳 >200mm 的帧"（参照始终跟随原始流），下一帧正常即恢复。*/
+  /* ★2026-10-22 坏帧过滤重写（第 3 版）：以"最后【接受】位置"为唯一参照，
+     **丢帧时不再更新参照**（旧版丢帧后把参照拉到坏帧 ⇒ 后续好帧也被误拒 ⇒
+     恢复正常后从旧点直连新点，轨迹上画出 0.85~0.93m 的假直线）。
+     + 连续 3 帧异常才强制接受（防真跳变卡死）。
+     + 速度一致性判据：位置隐含速度 ≫ 上报 |v| 的 3 倍 ⇒ 必定是坏帧。*/
+  if (S.conn && S.transport !== "mock" && S.rawX !== undefined){
+    var rjx = Math.abs(u.x - S.rawX), rjy = Math.abs(u.y - S.rawY);
+    /* 隐含速度（mm/s）与上报速度比对 */
+    var dtNow = S.pT ? Math.max(0.05, (Date.now() - S.pT)/1000) : 0.2;
+    var implied = Math.sqrt(rjx*rjx + rjy*rjy) / 1000 / dtNow;          /* m/s */
+    var reported = Math.sqrt((S.vx||0)*(S.vx||0) + (S.vy||0)*(S.vy||0)) / 1000;
+    var tooFast = implied > Math.max(reported * 3 + 0.3, 1.2);          /* 差 3 倍以上或 >1.2m/s */
+    if (rjx > 200 || rjy > 200 || tooFast){
+      S.badCnt = (S.badCnt || 0) + 1;
+      if (S.badCnt === 1)
+        log("丢弃异常遥测帧（跳变 " + (Math.max(rjx,rjy)/1000).toFixed(2) + " m"
+            + (tooFast ? "，速度不符 " + implied.toFixed(1) + " vs " + reported.toFixed(2) : "") + "）", "warn");
+      if (S.badCnt >= 3){ S.badCnt = 0; S.rawX = u.x; S.rawY = u.y; }   /* 连续 3 帧 ⇒ 强制重同步 */
+      return;   /* ★参照不更新 */
+    }
+  }
+  S.badCnt = 0;
+  S.rawX = u.x; S.rawY = u.y;
+  S.odoMM += Math.sqrt((u.x-S.x)*(u.x-S.x) + (u.y-S.y)*(u.y-S.y));   /* 累计里程（过滤后） */
+  /* ★2026-10-22 NaN 守卫：低电/链路异常帧解析出 NaN 会污染坐标与朝向显示（实测朝向 NaN）*/
+  /* ★2026-10-22 数值范围校验：分片错位产生的垃圾帧（实测 100.2V / −106.6V / 越界坐标）
+     一律拒收 ⇒ 显示永远来自可信帧 */
+  if (Math.abs(u.x) >= 32000 || Math.abs(u.y) >= 32000) return;   /* 坐标越界 ⇒ 整帧丢弃 */
+  if (isFinite(u.x) && isFinite(u.y) && isFinite(th)){
+    S.x = u.x; S.y = u.y; S.th = norm360(th + 90);
+  }
+  S.wp = wp; S.st = st;
+  /* ★显示外推差分速度（用户系）：钳位 ±600mm/s + EMA 平滑（单帧坏数据甩不动图标）*/
+  var tNow = Date.now();
+  if (S.pT && tNow > S.pT){
+    var dts = (tNow - S.pT)/1000;
+    if (dts > 0.01 && dts < 1){
+      var rvx = Math.max(-600, Math.min(600, (S.x - S.pX)/dts));
+      var rvy = Math.max(-600, Math.min(600, (S.y - S.pY)/dts));
+      S.dvx = (S.dvx || 0) * 0.5 + rvx * 0.5;
+      S.dvy = (S.dvy || 0) * 0.5 + rvy * 0.5;
+    }
+  }
+  S.pX = S.x; S.pY = S.y; S.pT = tNow;
+
+  if (st === 4 && !S.estopHinted){
+    S.estopHinted = true;
+    log("已进入急停/故障态：电机已断电。恢复步骤：按板上 S3（交还控制权）→ $CLR 清故障 → 重新待命", "warn");
+  }
+  if (st !== 4) S.estopHinted = false;
+  /* 字段：0:x 1:y 2:th 3:wp 4:st 5:vx 6:vy 7:batt（共 8 段）*/
+  if (f.length >= 7){ S.vx = parseInt(f[5],10)||0; S.vy = parseInt(f[6],10)||0; }
+  if (f.length >= 8){                       /* ★ 电池是第 8 段（索引 7）：条件必须 >=8 */
+    var b = parseInt(f[7], 10);
+    /* ★2026-10-22 电池范围校验：5.0~9.0V 之外（实测 1002 / −1066）视为垃圾帧，保持上次值 */
+    if (isFinite(b) && b >= 50 && b <= 90){ S.batt = b/10; S.battPct = battPct(S.batt); }
+  }
+
+  var last = S.path[S.path.length-1];
+  if (Date.now() < pathMuteUntil) { /* ★$ORG 后静音期：不记轨迹（防拖回原点的伪线段） */ }
+  else if (!last || Math.abs(last.x-u.x) > 5 || Math.abs(last.y-u.y) > 5){
+    S.path.push({x:u.x, y:u.y, t:Date.now(), th:dispTh(S.th), dbg:S.dbg});   /* ★ 轨迹点必须用用户系（与地图同系）；★v73b 附带显示航向（0°=车头初始）；★v74 附带 $DBG 快照（状态机透视） */
+    if (S.path.length > 4000) S.path.shift();
+  }
+  render();
+}
+
+/* ★ v2 修正：2S 锂电（8.4V 满 / 6.4V 空），旧版按 12V 写导致恒显 0% */
+function battPct(v){
+  if (v === null) return null;
+  var p = (v - 6.4) / (8.4 - 6.4) * 100;
+  return Math.max(0, Math.min(100, Math.round(p)));
+}
+function batColor(v){
+  if (v === null) return "#5c6672";
+  return v >= 7.8 ? "var(--ok)" : v >= 7.0 ? "var(--warn)" : "var(--err)";
+}
+
+/* ================= 渲染 ================= */
+function pad(n, w){ return String(Math.abs(Math.round(n))).padStart(w, "0"); }
+function sgn4(n){ return (n < 0 ? "-" : "+") + pad(n, 4); }
+function fmt(n){ return (n>=0?"+":"-") + String(Math.abs(Math.round(n))).padStart(4,"0"); }
+/* 米显示：内部仍是 mm，仅 UI 以米为单位（3 位小数去尾零） */
+function fmtM(n){
+  var m = Math.round(n) / 1000;
+  return (m>=0?"+":"-") + Math.abs(m).toFixed(3).replace(/\.?0+$/,"");
+}
+/* ===== 坐标系约定（★全站统一在收发边界换算）=====
+   用户系：+Y = 初始前方（前后），+X = 初始右方（左右），逆时针为正
+   固件系：+X = 初始前方（上电朝向），+Y = 初始左方
+   换算：fw→user 旋转 +90°：ux=-fy, uy=fx, uth=fth+90 ；user→fw：fx=uy, fy=-ux
+   $TEL 解析、$ADD/$OBS 发送、模拟内部一律走这两个函数，其它代码只见用户系 */
+function fwToUser(fx, fy){ return { x:-fy, y:fx }; }
+function userToFw(ux, uy){ return { x:uy, y:-ux }; }
+function norm360(a){ return ((a % 360) + 360) % 360; }
+
+/* ★2026-10-22 轨迹渲染：全量抽稀，绝不丢头部。
+   之前"只画最近 150 点"⇒ 车开远后原点那头被拉掉（用户描述"像一根固定长度的绳子"）。
+   现在按需抽稀：点数上限 ~500，形状不变，起点永远保留。S.path 本身只受 4000 点（≈13 分钟）限制。*/
+function trackPts(){
+  var n = S.path.length, out = [], i;
+  if (!n || !MAP) return "";
+  /* MAP 由 draw() 写入：sx = W/2 + (mm-mcx)*sc ；sy = H/2 - (mm-mcy)*sc */
+  var W = MAP.W, H = MAP.H, sc = MAP.sc, mcx = MAP.mcx, mcy = MAP.mcy;
+  var fx = function(mm){ return (W/2 + (mm - mcx) * sc).toFixed(1); };
+  var fy = function(mm){ return (H/2 - (mm - mcy) * sc).toFixed(1); };
+  var stride = Math.max(1, Math.ceil(n / 500));
+  for (i = 0; i < n; i += stride) out.push(fx(S.path[i].x) + "," + fy(S.path[i].y));
+  var lastI = n - 1;
+  if (out.length && (lastI % stride) !== 0) out.push(fx(S.path[lastI].x) + "," + fy(S.path[lastI].y));
+  return out.join(" ");
+}
+/* 朝向读数：以"初始车头方向（+Y）"为 0°，逆时针为正 ⇒ 原地不动时读 0.0°。
+   （地图内部角度 S.th 是从 +X 起算的绝对角，90°；仅显示与输入按 0°=车头方向换算） */
+function dispTh(thAbs){ return norm360(thAbs - 90); }
+
+function render(){
+  $("mX").innerHTML = fmtM(S.x) + '<span class="unit">m</span>';
+  $("mY").innerHTML = fmtM(S.y) + '<span class="unit">m</span>';
+  $("mTh").innerHTML = dispTh(S.th).toFixed(1) + '<span class="unit">°</span>';
+  var v = Math.sqrt(S.vx*S.vx + S.vy*S.vy) / 1000;
+  $("mV").innerHTML = v.toFixed(2) + '<span class="unit">m/s</span>';
+  /* ★v77（2026-10-29 整合任务五/六）：故障态 wp 字段携带 vision_reason ⇒ 显示 R<码>
+     R1 急停 / R2 permit 被否 / R3 画面不新鲜 / R5 超声不新鲜
+     R6 距离 ≤ 硬停 / R7 搜索超时 / R8 任务总超时 */
+  $("mWp").textContent = S.st === 4
+    ? "R" + S.wp
+    : (S.wps.length && (S.st===1 || S.st===3 || S.st===5))
+    ? "WP" + String(Math.min(S.wp + 1, S.wps.length)).padStart(2,"0")   /* 显示层 +1：第 1 个点 = WP01 */
+    : "—";
+  $("mBat").innerHTML = (S.batt===null?"—":S.batt.toFixed(1)) + '<span class="unit">V</span>';
+  $("mBatP").innerHTML = (S.battPct===null?"—":S.battPct) + '<span class="unit">%</span>';
+  var hz = (S.frameTimes.length/2).toFixed(1);
+  $("mHz").textContent = hz;
+  $("fps").textContent = S.frames;
+  $("frames2").textContent = S.frames;
+  $("posText").textContent = "当前 (" + fmtM(S.x) + ", " + fmtM(S.y) + ") m · 朝向 " + dispTh(S.th).toFixed(1) + "°";
+
+  /* 顶栏电量 */
+  var bc = batColor(S.batt);
+  $("batFill").style.width = (S.battPct===null?0:S.battPct) + "%";
+  $("batFill").style.background = bc;
+  $("batText").textContent = S.batt===null ? "— V" : S.batt.toFixed(1) + "V " + S.battPct + "%";
+  $("batText").style.color = bc;
+  $("odo").textContent = (S.odoMM/1000).toFixed(2);
+
+  /* 低电保护：<7.0V 连续 1 秒（10 帧）才判定，防单帧误判。
+     ★ 只警告、绝不动车（用户要求：看到警告后自行决定是否点「⌂ 一键回原点」） */
+  if (S.batt !== null && S.conn){
+    if (S.batt < 7.0){
+      S.battLowCnt = (S.battLowCnt || 0) + 1;
+      if (!S.lowBatFired && S.battLowCnt >= 10){
+        S.lowBatFired = true;
+        log("⚠ 电量偏低：" + S.batt.toFixed(1) + "V（<7.0V）—— 请尽快停车充电；"
+            + "如需让车回来，请手动点「⌂ 一键回原点」（网页不会自动动车）", "err");
+      }
+    } else {
+      S.battLowCnt = 0;
+      if (S.batt > 7.2 && S.lowBatFired){
+        S.lowBatFired = false;
+        log("电量恢复到 " + S.batt.toFixed(1) + "V，低电保护重新布防", "ok");
+      }
+    }
+  }
+
+  /* 状态徽章 */
+  $("mSt").textContent = ST_NAME[S.st] || ("码 " + S.st);
+  $("mSt").className = "badge " + (ST_CLS[S.st] || "st-idle");
+
+  renderFlow();
+  renderWps();
+  draw();
+}
+
+/* 导航流程条：录入 → 解读待命(ARMED) → 执行中(NAV/AVOID) → 到达(ARR) */
+function renderFlow(){
+  var n = S.wps.length, step = 0;
+  if (n > 0) step = 1;
+  if (S.st === 5) step = 2;
+  if (S.st === 1 || S.st === 3) step = 3;
+  if (S.st === 2) step = 4;
+  var labels = ["录入 "+n+" 点", "解读待命", "执行中", "到达"];
+  var html = "";
+  for (var i = 1; i <= 4; i++){
+    var cls = i < step ? "done" : (i === step ? "cur" : "");
+    var dot = (i <= step) ? "●" : "○";
+    html += '<span class="fstep '+cls+'">'+dot+" "+labels[i-1]+"</span>";
+    if (i < 4) html += '<span class="fline"></span>';
+  }
+  $("flow").innerHTML = html;
+}
+
+/* 途径点胶囊 */
+/* ---- 两步删除：地图点选 → 变亮 → 按「删除选中点」 ---- */
+var wpSel = null;
+function wpSelRender(){
+  var b = $("btnWpDel"); if (!b) return;
+  var ok = (wpSel !== null && S.wps[wpSel]);
+  b.disabled = !ok;
+  b.textContent = ok ? ("删除选中点 #" + (wpSel + 1)) : "删除选中点";
+}
+function wpSelect(k){
+  if (k < 0 || k >= S.wps.length) return;
+  wpSel = k; wpSelRender(); draw();
+  var p = S.wps[k];
+  log("已选中途径点 #" + (k+1) + " (" + (p.x/1000) + "," + (p.y/1000) + ")m —— 按「删除选中点」移除（点空白处取消）", "mut");
+}
+function wpSelClear(){
+  if (wpSel === null) return false;
+  wpSel = null; wpSelRender(); draw(); return true;
+}
+
+/* 删除途径点（列表 × / 删除按钮共用）：序号与连线自动重排 */
+function wpDelete(k){
+  if (S.st === 1 || S.st === 2 || S.st === 3){
+    log("导航中不能删除途径点（当前状态：导航/到达/避障）—— 先按「⏸ 暂停」", "warn");
+    draw(); return;
+  }
+  if (k < 0 || k >= S.wps.length) return;
+  var p = S.wps[k];
+  S.wps.splice(k, 1);
+  wpSel = null; wpSelRender();
+  renderWps(); draw();
+  log("已删除途径点 #" + (k+1) + " (" + (p.x/1000) + "," + (p.y/1000) + ") m，剩 " + S.wps.length + " 个（序号已重排）",
+      "ok");
+  if (S.st === 5) log("当前处于待命（已 $ARM）—— 改动后请重新按「① 解读待命」", "warn");
+}
+function renderWps(){
+  $("wpCount").textContent = S.wps.length;
+  var box = $("wpList");
+  if (!S.wps.length){ box.innerHTML = '<span class="hint">暂无途径点 —— 选点后点「添加途径点」</span>'; return; }
+  box.innerHTML = S.wps.map(function(p, k){
+    var cur = (S.st===1 || S.st===3) && (k+1) === S.wp;
+    return '<span class="wpchip'+(cur?" cur":"")+'"'+(p.d?' title="自动绕行点"':"")+'>'+(p.d?"绕":"")+(k+1)+" ("+(p.x/1000)+","+(p.y/1000)+')m<i data-k="'+k+'" title="移除">×</i></span>';
+  }).join("");
+  box.querySelectorAll("i").forEach(function(el){
+    el.addEventListener("click", function(){
+      wpDelete(+el.getAttribute("data-k"));
+      log("本地移除途径点 " + (k+1) + "（要生效需重发 $ADD 并重新 $ARM）", "warn");
+    });
+  });
+}
+
+/* 地图：视野自动跟随 + 比例尺/刻度 + 俯视小车（画布尺寸跟随容器实际宽高） */
+var _lastDrawSig = null;
+var _drawLast = 0;
+function draw(){
+  /* ★渲染节流 5Hz（长轨迹全量重建拖慢主线程；车图标由 20Hz 更新器平滑）*/
+  var _tn = Date.now();
+  if (typeof location !== "undefined" && _tn - _drawLast < 95) return;   /* ★2026-10-22 3Hz→10Hz：
+                                              330ms 才重绘 ⇒ 轨迹"一条一条"冒出来（实测）。
+                                              异常风暴已修 + 折线限 150 点 ⇒ 10Hz 无压力。*/
+  _drawLast = _tn;
+  /* ★ 签名去重：遥测 10Hz 会不停调 draw()，但待机时数据没变 ——
+     若每次都 innerHTML 重建整张 SVG，"按下→松开"之间元素被移除，浏览器会取消 click
+     （这正是"点图选点点了没反应/时灵时不灵"的根因）。无变化 ⇒ 直接返回，不动 DOM。 */
+  /* ★2026-10-22 轨迹点数按 4 个一档：真点以 5Hz 进来，若每点都触发整图重建 ⇒ 每 200ms 一次全量
+     重绘（"卡"）。改为每 4 点重建一次（≈0.8s），中间由 20Hz 的末端延伸补足视觉连续性。 */
+  var sig = [Math.round(S.x/20), Math.round(S.y/20), Math.round(S.th/2), S.wp, S.st, Math.floor(S.path.length/4),
+             S.wps.map(function(p){ return p.x + "," + p.y; }).join(";"),
+             S.obstacles.length, pickOn ? 1 : 0, (wpSel === null ? "-" : wpSel),
+             S.pickMark ? S.pickMark.x + "," + S.pickMark.y : ""].join("|");
+  if (sig === _lastDrawSig) return;
+  _lastDrawSig = sig;
+
+  var svg = $("field");
+  var W = svg.clientWidth  || 520;  if (W < 60) W = 520;   // 布局未就绪时兜底
+  var H = svg.clientHeight || W;    if (H < 60) H = W;
+  /* 视口铺满容器；等比缩放由下面的 sc（取短边）保证 ⇒ 格子恒为正方形，不靠 viewBox 正方形 */
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  var PAD = 46;
+
+  /* ---- 视野自动跟随：所有已知点的包围盒 ×1.3 边距，原点常驻 ---- */
+  var xs = [], ys = [], i;
+  for (i = 0; i < S.path.length; i++){ xs.push(S.path[i].x); ys.push(S.path[i].y); }
+  for (i = 0; i < S.wps.length; i++){ xs.push(S.wps[i].x); ys.push(S.wps[i].y); }
+  for (i = 0; i < S.obstacles.length; i++){ xs.push(S.obstacles[i].x); ys.push(S.obstacles[i].y); }
+  xs.push(S.x); ys.push(S.y); xs.push(0); ys.push(0);
+
+  var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+  var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+  var span = Math.max(maxX - minX, maxY - minY, 2000) * 1.3;   // 最小视野 2m ⇒ 网格 0.5m/格
+  var mcx = (minX + maxX) / 2, mcy = (minY + maxY) / 2;
+  /* ★视野锁定：勾选后沿用上一次的视野（不随轨迹缩放跳动）；重置原点时清除 */
+  if (S.viewLock && S.viewSave){ span = S.viewSave.span; mcx = S.viewSave.mcx; mcy = S.viewSave.mcy; }
+  else {
+    /* ★2026-10-22 视野量化：原来随轨迹包围盒连续缩放 ⇒ 整张 SVG 每帧重画（"卡"的主因）。
+       量化到"视野 1m 步进 / 中心 0.25m 步进" ⇒ 绝大多数帧视野完全不变 ⇒ 画面稳定、开销骤降。*/
+    span = Math.ceil(span / 1000) * 1000;
+    mcx  = Math.round(mcx / 250) * 250;
+    mcy  = Math.round(mcy / 250) * 250;
+    S.viewSave = { span: span, mcx: mcx, mcy: mcy };
+  }
+  /* ★ 等比例映射：x/y 用同一个缩放比（取短边），保证角度不失真 ——
+     否则 45° 航向画出来不是 45°，小车尖和路径线永远对不齐 */
+  var sc = Math.min(W - 2*PAD, H - 2*PAD) / span;
+  var xVis = W / (2*sc), yVis = H / (2*sc);          /* 半视野（mm） */
+  function sx(mm){ return W/2 + (mm - mcx) * sc; }
+  function sy(mm){ return H/2 - (mm - mcy) * sc; }
+  function fmm(v){   /* 轴/比例尺标注：以米为单位（0.5 / 1 / 1.5 …） */
+    var m = Math.round(v/100) / 10;
+    return (m === 0) ? "0" : String(m);
+  }
+
+  var out = [];
+  out.push('<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="#0d1017"/>');
+
+  /* ---- 网格 + 轴刻度（步长取 1/2/5×10ⁿ 好数，覆盖整个可见范围）---- */
+  /* ★2026-10-22 修复：视野量化后 span 跳到 3000mm，正好踩在步长分界 ⇒ 网格变 1m（用户要 0.5m）。
+     现在：可见跨度 ≤4.2m 时固定 0.5m 网格（就是原来的观感）；更远才退回 1/2/5×10ⁿ 自动步长。 */
+  var step;
+  if (span <= 4200) step = 500;
+  else {
+    var raw = span/4, pw = Math.pow(10, Math.floor(Math.log(raw)/Math.LN10));
+    var rr = raw/pw; step = (rr < 1.5 ? 1 : rr < 3.5 ? 2 : rr < 7.5 ? 5 : 10) * pw;
+  }
+  var gx0 = Math.ceil((mcx - xVis)/step)*step, gx1 = mcx + xVis;
+  var gy0 = Math.ceil((mcy - yVis)/step)*step, gy1 = mcy + yVis;
+  for (i = gx0; i <= gx1 + 1; i += step){
+    var isY = Math.abs(i) < step/2;
+    out.push('<line x1="'+sx(i)+'" y1="0" x2="'+sx(i)+'" y2="'+H
+             +'" stroke="'+(isY?'var(--lineh)':'var(--line)')+'" stroke-width="1"/>');
+    out.push('<text x="'+(sx(i)+3)+'" y="'+(H-PAD+15)+'" font-size="11" fill="var(--tx3)">'+fmm(i)+'</text>');
+  }
+  for (i = gy0; i <= gy1 + 1; i += step){
+    var isX = Math.abs(i) < step/2;
+    out.push('<line x1="0" y1="'+sy(i)+'" x2="'+W+'" y2="'+sy(i)
+             +'" stroke="'+(isX?'var(--lineh)':'var(--line)')+'" stroke-width="1"/>');
+    out.push('<text x="8" y="'+(sy(i)-4)+'" font-size="11" fill="var(--tx3)">'+fmm(i)+'</text>');
+  }
+
+  /* ---- 比例尺（右下角：一格长度）---- */
+  var blpx = step * sc;
+  var bx0 = W - PAD - blpx - 4, by = H - 16;
+  out.push('<line x1="'+bx0+'" y1="'+by+'" x2="'+(bx0+blpx)+'" y2="'+by+'" stroke="var(--tx2)" stroke-width="2"/>');
+  out.push('<line x1="'+bx0+'" y1="'+(by-4)+'" x2="'+bx0+'" y2="'+(by+4)+'" stroke="var(--tx2)" stroke-width="2"/>');
+  out.push('<line x1="'+(bx0+blpx)+'" y1="'+(by-4)+'" x2="'+(bx0+blpx)+'" y2="'+(by+4)+'" stroke="var(--tx2)" stroke-width="2"/>');
+  out.push('<text x="'+(bx0+blpx/2)+'" y="'+(by-8)+'" font-size="11" fill="var(--tx2)" text-anchor="middle">'+fmm(step)+' m</text>');
+
+  /* ---- 规划路径（虚线 = 剩余路线）----
+     未开始 ⇒ 车 → 1 → … → N；导航中 ⇒ 车 → 当前目标 → … → N；已到达(st=2) ⇒ 不画 */
+  if (S.wps.length > 0 && S.st !== 2){
+    var startIdx = (S.st === 1 || S.st === 3) ? Math.max(0, Math.min(S.wp, S.wps.length - 1)) : 0;   /* ★固件 wp 为 0 基当前目标 */
+    var pts = [{x:S.x, y:S.y}].concat(S.wps.slice(startIdx))
+              .map(function(p){ return sx(p.x)+","+sy(p.y); }).join(" ");
+    out.push('<polyline points="'+pts+'" fill="none" stroke="var(--tx3)" stroke-width="1.5" stroke-dasharray="5 4"/>');
+  }
+  /* ---- 途径点（当前目标外圈脉冲）---- */
+  S.wps.forEach(function(p, k){
+    var cur = (S.st===1 || S.st===3) && (k+1) === S.wp;
+    if (cur) out.push('<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="12" fill="none" stroke="var(--acc)" stroke-width="1" opacity="0.5"/>');
+    if (wpSel === k) out.push('<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="14" fill="none" stroke="var(--warn)" stroke-width="2.5" stroke-dasharray="4 3"/>');
+    out.push('<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="5" fill="#0b0e14" stroke="'+(p.d?"var(--warn)":"var(--ok)")+'" stroke-width="2"/>');
+    /* ★点地图删点（2026-10-18）：透明命中圈，只盖圆点本身，不影响别处取点 */
+    out.push('<circle class="wphit" cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="9" fill="transparent" style="cursor:pointer" onclick="wpSelect('+k+');event.stopPropagation()"><title>点击选中途径点 #'+(k+1)+'（再按「删除选中点」删除）</title></circle>');
+    out.push('<text x="'+(sx(p.x)+8)+'" y="'+(sy(p.y)-7)+'" font-size="11" fill="'+(p.d?"var(--warn)":"var(--ok)")+'">'+(p.d?"绕":"")+(k+1)+' ('+(p.x/1000)+','+(p.y/1000)+')m</text>');
+  });
+  /* ---- 障碍 ---- */
+  S.obstacles.forEach(function(p){
+    out.push('<rect x="'+(sx(p.x)-10)+'" y="'+(sy(p.y)-10)+'" width="20" height="20" fill="none" stroke="var(--err)" stroke-width="1.5"/>');
+  });
+  /* ---- 实际轨迹（青）---- */
+  if (S.path.length > 1){
+    /* ★全量抽稀（不再丢头部）：draw 内用当前视角的 sx/sy（MAP 要到函数末尾才赋值）*/
+    var _n = S.path.length, _st = Math.max(1, Math.ceil(_n / 500)), _o = [];
+    for (var _i = 0; _i < _n; _i += _st) _o.push(sx(S.path[_i].x).toFixed(1)+","+sy(S.path[_i].y).toFixed(1));
+    if (_n && ((_n-1) % _st) !== 0) _o.push(sx(S.path[_n-1].x).toFixed(1)+","+sy(S.path[_n-1].y).toFixed(1));
+    var pp = _o.join(" ");
+    /* ★2026-10-22 轨迹末端接外推点：遥测 5Hz 只有 5 个真点/秒 ⇒ 末端用外推位置延伸，
+       每 10Hz 重绘时看起来是连续的线（真点不动，只延伸末梢）*/
+    if (S.conn && S.pT){
+      var _age2 = Math.min(Date.now() - S.pT, 260);
+      var _tx = S.x + (S.dvx || 0) * _age2/1000, _ty = S.y + (S.dvy || 0) * _age2/1000;
+      if (Math.abs(_tx - S.x) > 2 || Math.abs(_ty - S.y) > 2)
+        pp += " " + sx(_tx).toFixed(1) + "," + sy(_ty).toFixed(1);
+    }
+    S._ppStatic = pp;   /* ★存静态点串：20Hz 循环只用它 + 外推末端，不重算 150 点 */
+    out.push('<polyline id="trackP" points="'+pp+'" fill="none" stroke="var(--acc)" stroke-width="2.5" stroke-linejoin="round"/>');
+  }
+
+  /* ---- 小车：俯视车身 + 四轮 + 车头楔形（S.th 已是用户系角：初始 90°=朝 +Y）---- */
+  /* ★显示外推 ~120ms：抵消遥测/蓝牙固有延迟（速度已钳位+EMA）*/
+  var age = S.pT ? Math.min(Date.now() - S.pT, 260) : 0;
+  var exX = S.x + (S.dvx || 0) * age/1000, exY = S.y + (S.dvy || 0) * age/1000;
+  var cx = sx(exX).toFixed(1), cy = sy(exY).toFixed(1), rot = (-S.th).toFixed(1);
+  var car = '<g id="carG" transform="translate('+cx+','+cy+') rotate('+rot+')">';
+  car += '<rect x="-17" y="-12" width="7" height="5.5" rx="1.5" fill="var(--tx2)"/>';   /* 四轮 */
+  car += '<rect x="10"  y="-12" width="7" height="5.5" rx="1.5" fill="var(--tx2)"/>';
+  car += '<rect x="-17" y="6.5" width="7" height="5.5" rx="1.5" fill="var(--tx2)"/>';
+  car += '<rect x="10"  y="6.5" width="7" height="5.5" rx="1.5" fill="var(--tx2)"/>';
+  car += '<rect x="-13" y="-9" width="26" height="18" rx="4" fill="#0f2f3a" stroke="var(--acc)" stroke-width="2"/>';
+  car += '<polygon points="17,0 9,-5 9,5" fill="var(--acc)"/>';                     /* 车头尖 */
+  car += '<circle r="1.8" fill="var(--acc)"/>';
+  car += '</g>';
+  out.push(car);
+
+  /* ---- 光标层：点图选点开启时显示十字准线/吸附（mousemove 单独更新，不重绘全图）---- */
+  out.push('<g id="cursorG" pointer-events="none"></g>');
+  svg.innerHTML = out.join("");
+  /* 存映射参数供"点地图加途径点"反解 */
+  MAP = { span:span, mcx:mcx, mcy:mcy, W:W, H:H, PAD:PAD, sc:sc, step:step };
+  drawCursor();   /* ★ 图重建后补画十字准线，避免遥测重绘造成"闪烁选不中" */
+}
+
+/* ================= 交互 ================= */
+document.querySelectorAll(".cmd").forEach(function(el){
+  el.addEventListener("click", function(){
+    var f = el.getAttribute("data-cmd");
+    if (f.indexOf("$MV,") === 0) manualMove(f); else send(f);   /* 手动动作带导航退出保护 */
+  });
+});
+
+$("btnConn").addEventListener("click", function(){
+  S.transport = $("transport").value;
+  if (S.transport === "ble") connBLE();
+  else if (S.transport === "serial") connSerial();
+  else connMock();
+});
+$("transport").addEventListener("change", function(){
+  $("showAllWrap").style.display = ($("transport").value === "ble") ? "inline-flex" : "none";
+});
+$("btnDisc").addEventListener("click", disconnect);
+
+$("btnSend").addEventListener("click", function(){
+  var v = $("raw").value.trim();
+  if (v) send(v);
+});
+$("raw").addEventListener("keydown", function(e){ if (e.key === "Enter") $("btnSend").click(); });
+
+/* 规划级避障：检查"上一节点 → 新点"是否穿过已记忆障碍（35cm 净空），
+   命中则在最近点侧向 40cm 处自动插一个绕行点（选离障碍更远的一侧） */
+function segBlocked(ax, ay, bx, by){
+  var best = null;
+  for (var i = 0; i < S.obstacles.length; i++){
+    var o = S.obstacles[i], dx = bx-ax, dy = by-ay;
+    var len2 = dx*dx + dy*dy;
+    if (len2 < 1) continue;
+    var t = ((o.x-ax)*dx + (o.y-ay)*dy) / len2;
+    if (t <= 0.05 || t >= 0.95) continue;                 // 端点附近不算穿越
+    var px = ax + dx*t, py = ay + dy*t;
+    var ddx = o.x-px, ddy = o.y-py;
+    if (ddx*ddx + ddy*ddy < 350*350 && (!best || t < best.t))
+      best = {o:o, t:t, px:px, py:py};
+  }
+  return best;
+}
+function detourOf(hit, ax, ay, bx, by){
+  var dx = bx-ax, dy = by-ay, len = Math.sqrt(dx*dx+dy*dy) || 1;
+  var nx = -dy/len, ny = dx/len;                          // 段法向
+  var cand = [ {x:hit.px+nx*400, y:hit.py+ny*400}, {x:hit.px-nx*400, y:hit.py-ny*400} ];
+  function clearDist(p){
+    var m = 1e9;
+    for (var i = 0; i < S.obstacles.length; i++){
+      var ddx = S.obstacles[i].x-p.x, ddy = S.obstacles[i].y-p.y;
+      m = Math.min(m, Math.sqrt(ddx*ddx+ddy*ddy));
+    }
+    return m;
+  }
+  return (clearDist(cand[0]) >= clearDist(cand[1]) ? cand[0] : cand[1]);
+}
+
+$("btnAdd").addEventListener("click", function(){
+  var xm = parseFloat($("wx").value), ym = parseFloat($("wy").value);   // 输入单位：米（用户系）
+  if (!isFinite(xm) || !isFinite(ym)){ log("请先填写 X / Y（单位：米）", "err"); return; }
+  var x = Math.round(xm * 1000), y = Math.round(ym * 1000);            // 用户系 mm
+  if (Math.abs(x) > 32000 || Math.abs(y) > 32000){ log("超出 ±32m 限幅，请检查输入", "err"); return; }
+  /* 障碍记忆 → 自动绕行（全部在用户系里算） */
+  var last = S.wps.length ? S.wps[S.wps.length-1] : {x:S.x, y:S.y};
+  var hit = segBlocked(last.x, last.y, x, y);
+  if (hit){
+    var d = detourOf(hit, last.x, last.y, x, y);
+    var dxr = Math.round(d.x), dyr = Math.round(d.y);
+    var fw = userToFw(dxr, dyr);
+    sendAdd(fw);
+    S.wps.push({x:dxr, y:dyr});
+    log("路径将穿过障碍 #" + (S.obstacles.indexOf(hit.o)+1) +
+        "，已自动插入绕行点 (" + (dxr/1000) + "," + (dyr/1000) + ")m", "warn");
+  }
+  var fw2 = userToFw(x, y);                     /* 发给车的必须是固件系坐标 */
+  sendAdd(fw2);
+  S.wps.push({x:x, y:y});
+  renderWps(); draw();
+});
+/* 标障碍模式：点地图放红框（旧行为"标在小车当前位置"⇒ 红框被车身挡住，看起来没生效） */
+var obsMode = false;
+function obsModeRender(){
+  var b = $("btnMark");
+  b.textContent = obsMode ? "☑ 点图标障碍：开" : "标记障碍";
+  /* ★2026-10-23 新增：清除障碍记忆（原界面没有入口，障碍只能越攒越多；刷新也不消失）*/
+  var obc = $("btnObsClear");
+  if (obc) obc.addEventListener("click", function(){
+    if (!S.obstacles.length){ log("没有已记忆的障碍", "mut"); return; }
+    var k = S.obstacles.length;
+    S.obstacles = []; obsSave(); draw();
+    log("已清除 " + k + " 个障碍记忆（浏览器本地存储）", "warn");
+  });
+  b.style.borderColor = obsMode ? "var(--err)" : "";
+  b.style.color       = obsMode ? "var(--err)" : "";
+  $("field").style.cursor = obsMode ? "crosshair" : (pickOn ? "crosshair" : "");
+}
+$("btnMark").addEventListener("click", function(){
+  obsMode = !obsMode;
+  obsModeRender();
+  log(obsMode ? "标障碍模式：点地图放置红框（可连续标），再点按钮退出" : "标障碍模式已退出", "mut");
+});
+$("btnWpDel").addEventListener("click", function(){
+  if (wpSel === null || !S.wps[wpSel]){ log("先在地图上点选一个途径点，再按这里删除", "warn"); return; }
+  wpDelete(wpSel);
+});
+document.addEventListener("keydown", function(ev){
+  var tag = (ev.target && ev.target.tagName) || "";
+  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+  if ((ev.key === "Delete" || ev.key === "Backspace") && wpSel !== null){ ev.preventDefault(); wpDelete(wpSel); }
+  else if (ev.key === "Escape" && wpSel !== null){ wpSelClear(); log("已取消选中", "mut"); }
+});
+/* ★极性下发（2026-10-19）：勾选即改，运行中生效，无需重编 */
+function cfgMask(pre){ var m = 0; for (var i = 0; i < 4; i++){ if ($(pre + i).checked) m |= (1 << i); } return m; }
+$("btnCfgEnc").addEventListener("click", function(){
+  var m = cfgMask("encInv"); send("$CFG,1," + m);
+  log("已下发编码器极性 mask=" + m + "（bit0左前 1右前 2左后 3右后）—— 请再测一次前进", "warn");
+});
+$("btnCfgDir").addEventListener("click", function(){
+  var m = cfgMask("dirInv"); send("$CFG,2," + m);
+  log("已下发驱动方向 mask=" + m + "（bit0左前 1右前 2左后 3右后）—— 请再测一次前进", "warn");
+});
+try{ $("encInv1").checked = true; $("encInv3").checked = true; }catch(e){}   /* 与固件默认 4'b1010 对齐 */
+$("chkReplan").addEventListener("change", function(){
+  if (this.checked){
+    log("已开启「上位机辅助重规划」—— 注意：实时避障由 FPGA 机载自主完成（拔掉电脑照样避障）；" +
+        "本功能只在收到避障事件后重发路线，属演示/记忆优化用途", "warn");
+  } else {
+    log("已关闭辅助重规划 —— 避障仍由 FPGA 自主执行", "mut");
+  }
+});
+$("btnObsClr").addEventListener("click", function(){
+  S.obstacles = []; obsSave(); draw();
+  log("障碍记忆已清空", "mut");
+});
+$("btnOrg").addEventListener("click", function(){
+  if (!S.conn){ log("未连接 —— 先连接后再重置原点", "err"); return; }
+  if (S.st === 1 || S.st === 3){
+    log("导航中不能重置原点 —— 先按「停」或发 $ESTOP 交还控制", "warn"); return;
+  }
+  send("$ORG");
+  S.path = []; S.dspX = undefined; S.dspY = undefined; S.odoMM = 0;            /* 轨迹与里程从新原点重新累计 */
+  /* ★2026-10-23 重置原点时一并清空障碍记忆：障碍坐标是相对旧原点的，原点变了就全错
+     （之前会在错误位置插绕行点，导致轨迹多出莫名其妙的拐点）。 */
+  if (S.obstacles.length){ S.obstacles = []; obsSave(); draw();
+    log("重置原点 —— 已清空 " + "障碍记忆（旧坐标失效）", "warn"); }
+  if (S.wps.length){ S.wps = []; renderWps(); log("重置原点 —— 本地航点已一并清空（固件队列 v41 起同步清空）", "warn"); }
+  S.rawX = undefined; S.rawY = undefined;   /* ★坏帧过滤参照同步清零（否则归零跳变被误丢一帧）*/
+  pathMuteUntil = Date.now() + 700;    /* ★静音 0.7s：丢弃在途旧帧，避免"拖回原点"的伪轨迹 */
+  /* ★2026-10-20：位姿**立即**归零（真机下一帧会确认；模拟数据没有 $ORG 响应，必须自己清，
+     否则会出现"轨迹没了但位置还在"）。S.th=90 对应用户系"朝向 0°"（车头初始方向）。 */
+  S.x = 0; S.y = 0; S.th = 90; S.wp = 0; S.viewSave = null;
+  if (S.transport === "mock"){
+    mock.x = 0; mock.y = 0; mock.th = 0;
+    mock.mode = "idle"; mock.done = false; mock.wpIdx = 0;
+    mock.alignErr = 0; mock.cruiseRemain = 0; mock.mvVec = null;
+  }
+  render(); draw();
+  log("已发 $ORG：当前位置与朝向将设为世界系原点（x=0, y=0, 朝向=初始）", "ok");
+});
+/* ★调试面板默认不显示；Ctrl+Shift+D 呼出（标定/排错时才用） */
+document.addEventListener("keydown", function(ev){
+  if (ev.ctrlKey && ev.shiftKey && (ev.key === "D" || ev.key === "d")){
+    ev.preventDefault();
+    var p = $("dbgPanel"); if (!p) return;
+    p.hidden = !p.hidden;
+    if (!p.hidden) p.open = true;
+    log(p.hidden ? "调试面板已隐藏" : "调试面板已显示（含自定义帧/极性/快捷帧）", "mut");
+  }
+});
+$("viewLock").addEventListener("change", function(){
+  S.viewLock = this.checked;
+  if (!this.checked) S.viewSave = null;
+  log(this.checked ? "视野已锁定（地图不再自动缩放）" : "视野已恢复自动跟随", "mut");
+});
+$("btnClearPath").addEventListener("click", function(){
+  S.path = []; S.evtLog = []; render(); log("轨迹已清空", "mut");
+});
+
+/* ===== 导出 CSV（数据留证 / 报告素材）：轨迹 + 途径点 + 障碍，全部米制 ===== */
+function buildCsv(){
+  /* ★v74：traj 行追加 10 列 $DBG 快照（ph,sub,step,near,far,unk,cm,odo,w,gear），无 DBG 时留空 */
+  var out = ["kind,t_ms,x_m,y_m,th_deg,ph,sub,step,near,far,unk,samp_cm,odo_deg,w_dps,gear"];
+  S.path.forEach(function(p, i){
+    /* ★v76：过滤断链残帧——车断电瞬间遥测乱码会产生 NaN/超界坐标，写进 CSV 污染判读
+       ★v76b 修单位 bug：p.x/p.y 是毫米（导出时才 /1000），10 m = 10000 mm；
+       原写 >10 把 10mm 外的轨迹点全部误滤（10-28 三跑 CSV 各只剩 1 点的根因） */
+    if (!isFinite(p.x) || !isFinite(p.y) || Math.abs(p.x) > 10000 || Math.abs(p.y) > 10000) return;
+    var d = p.dbg, ds = d ? (d.p+","+d.s+","+d.t+","+d.n+","+d.fr+","+d.u+","+d.c+","+d.o+","+d.w+","+d.g) : ",,,,,,,,";
+    out.push("traj," + (p.t || i*100) + "," + (p.x/1000).toFixed(3) + "," + (p.y/1000).toFixed(3) + ","
+             + (p.th !== undefined ? p.th.toFixed(1) : "") + "," + ds);
+  });
+  S.wps.forEach(function(p){ out.push("wp,0," + (p.x/1000).toFixed(3) + "," + (p.y/1000).toFixed(3) + ","); });
+  S.obstacles.forEach(function(p){ out.push("obs,0," + (p.x/1000).toFixed(3) + "," + (p.y/1000).toFixed(3) + ","); });
+  /* ★v73b：事件流（EVT/ARM/GO/DON 等）带时间戳随 CSV 导出，供避障复盘对齐 θ(t) */
+  (S.evtLog || []).forEach(function(e){
+    /* ★v76：过滤断链残帧生成的 NaN 状态机事件行 */
+    if (/NaN/.test(e.msg)) return;
+    out.push("evt," + e.t + ",,,\"" + e.msg.replace(/"/g, "'") + "\"");
+  });
+  return out.join("\n") + "\n";
+}
+$("btnCsv").addEventListener("click", function(){
+  var csv = buildCsv();
+  try{
+    var blob = new Blob([csv], { type:"text/csv;charset=utf-8" });
+    var a = document.createElement("a");
+    var ts = new Date();
+    a.href = URL.createObjectURL(blob);
+    a.download = "轨迹_" + ts.getFullYear() + pad(ts.getMonth()+1,2) + pad(ts.getDate(),2) + "_"
+               + pad(ts.getHours(),2) + pad(ts.getMinutes(),2) + ".csv";
+    a.click();
+    setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} }, 2000);
+    log("已导出 CSV：轨迹 " + S.path.length + " 点 / 途径点 " + S.wps.length + " / 障碍 " + S.obstacles.length, "ok");
+  }catch(e){
+    log("下载被浏览器拦截（" + e.message + "）—— 内容已输出到控制台，可复制保存", "warn");
+    console.log(csv);
+  }
+});
+
+/* ===== 路线保存 / 载入（localStorage；载入后自动逐条 $ADD 下发，保证车与网页一致） ===== */
+var ROUTE_KEY  = "fpga_nav_route_v1";        /* 旧单槽（仅用于迁移） */
+var ROUTE_IDX  = "fpga_nav_routes_idx";      /* 路线名索引 */
+function routeNames(){
+  var a = [];
+  try{ a = JSON.parse(localStorage.getItem(ROUTE_IDX) || "[]") || []; }catch(e){ a = []; }
+  if (!a.length){
+    try{ if (localStorage.getItem(ROUTE_KEY)) a = ["默认路线"]; }catch(e){}
+  }
+  return a;
+}
+function routeCur(){
+  return ($("routeName").value || "").trim() || (routeNames()[0] || "默认路线");
+}
+function routeRefreshList(){
+  var dl = $("routeList");
+  if (dl) dl.innerHTML = routeNames().map(function(x){ return '<option value="' + x + '">'; }).join("");
+}
+$("btnRouteSave").addEventListener("click", function(){
+  if (!S.wps.length){ log("当前没有途径点可保存", "warn"); return; }
+  var name = routeCur();
+  try{
+    localStorage.setItem("fpga_nav_route_n_" + name, JSON.stringify(S.wps));
+    var idx = routeNames();
+    if (idx.indexOf(name) < 0){ idx.push(name); localStorage.setItem(ROUTE_IDX, JSON.stringify(idx)); }
+  }catch(e){ log("浏览器存储不可用（" + e.message + "）—— 路线未保存", "err"); return; }
+  routeRefreshList();
+  log("路线「" + name + "」已保存（" + S.wps.length + " 个途径点）—— 换场地后同名 📂载入 即可重放", "ok");
+});
+$("btnRouteLoad").addEventListener("click", function(){
+  var name = routeCur(), arr = [];
+  try{ arr = JSON.parse(localStorage.getItem("fpga_nav_route_n_" + name) || localStorage.getItem(ROUTE_KEY) || "[]") || []; }
+  catch(e){ arr = []; }
+  if (!arr.length){ log("没有名为「" + name + "」的已存路线 —— 先在输入框填对名字，或先 💾 保存", "warn"); return; }
+  if (!S.conn){ log("未连接 —— 载入需要把途径点逐条 $ADD 下发给车，请先连接", "err"); return; }
+  S.wps = [];
+  arr.forEach(function(p){
+    var fw = userToFw(p.x, p.y);
+    sendAdd(fw);
+    S.wps.push({x:p.x, y:p.y});
+  });
+  renderWps(); draw();
+  log("已载入「" + name + "」并下发 " + arr.length + " 个途径点 —— 按「① 解读待命」→「② 开始导航」开始重放", "ok");
+});
+$("btnRouteDel").addEventListener("click", function(){
+  var name = routeCur();
+  try{ localStorage.removeItem("fpga_nav_route_n_" + name); }catch(e){}
+  try{ localStorage.setItem(ROUTE_IDX, JSON.stringify(routeNames().filter(function(x){ return x !== name; }))); }catch(e){}
+  routeRefreshList();
+  log("已删除路线「" + name + "」", "mut");
+});
+$("btnCsvImp").addEventListener("click", function(){ $("csvFile").click(); });
+$("csvFile").addEventListener("change", function(ev){
+  var f = ev.target.files && ev.target.files[0]; if (!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){
+    var wps = [];
+    (rd.result || "").split(/\r?\n/).forEach(function(line){
+      var c = line.split(",");
+      if (c[0] === "wp"){
+        var x = parseFloat(c[2]), y = parseFloat(c[3]);
+        if (isFinite(x) && isFinite(y)) wps.push({x:x, y:y});
+      }
+    });
+    if (!wps.length){ log("CSV 里没有途径点（wp 行）", "warn"); return; }
+    S.wps = wps; renderWps(); draw();
+    if (S.conn){
+      S.wps.forEach(function(p){ var fw = userToFw(p.x, p.y); sendAdd(fw); });
+      log("已从 CSV 导入 " + wps.length + " 个途径点并下发 —— 按「① 解读待命」→「② 开始导航」", "ok");
+    } else {
+      log("已从 CSV 导入 " + wps.length + " 个途径点（未连接，仅显示）—— 连接后可 💾 保存存档", "ok");
+    }
+  };
+  rd.readAsText(f, "utf-8");
+  ev.target.value = "";
+});
+routeRefreshList();
+
+/* 窗口尺寸变化 ⇒ 画布尺寸变了，重算 viewBox 与网格 */
+window.addEventListener("resize", function(){ _lastDrawSig = null; draw(); });
+
+/* ===== 一键回原点：$ADD,0,0 → $ARM → $GO（全部是现有指令，车本来就听得懂）===== */
+$("btnHome").addEventListener("click", function(){
+  if (!S.conn){ log("未连接 —— 先连接后再回原点", "err"); return; }
+  /* ★ 必须 $STOP（立即停车）+ $CLR（清空旧路线）：$ADD 是"追加"，
+     不清空的话车会先把残留的旧途径点挨个跑一遍（每点停顿+转向），然后才回原点。
+     注意：原点必须在 $CLR 回执之后才录入本地列表（$CLR 回执会同步清空网页列表） */
+  send("$STOP");
+  setTimeout(function(){ send("$CLR");   }, 200);
+  setTimeout(function(){
+    send("$ADD,0,0");
+    S.wps = [{x:0, y:0}]; renderWps(); draw();   /* ★ $CLR 生效后再录入原点 */
+  }, 450);
+  setTimeout(function(){ send("$ARM");   }, 700);
+  setTimeout(function(){ send("$GO");    }, 1000);
+  S.homePending = true;                    /* $DON 到达后自动转回初始朝向 */
+  setTimeout(function(){                   /* ★ 60s 内未收到到达应答 ⇒ 取消回转步骤，防标志残留 */
+    if (S.homePending){
+      S.homePending = false;
+      log("回原点任务 60 秒内未收到「已到达」应答 —— 已取消回转步骤（车可能被挡或链路异常）", "warn");
+    }
+  }, 60000);
+  log("回原点任务已下发：停车清旧路线 → 对准原点方位 → 直线回 (0,0) → 转回初始朝向", "ok");
+});
+
+/* ★20Hz 车图标平滑：只改 #carG 的 transform（守卫齐全 + try/catch ——
+   上一版"网页没反应"= 缺 MAP 守卫 ⇒ 每 50ms 抛异常拖垮主线程，修的是这个）*/
+setInterval(function(){
+  try{
+    if (!S.conn || !S.pT || !MAP || document.hidden) return;
+    var g = document.querySelector("#carG"); if (!g) return;
+    var age = Math.min(Date.now() - S.pT, 260);
+    var tgtX = S.x + (S.dvx || 0) * age/1000, tgtY = S.y + (S.dvy || 0) * age/1000;
+    /* ★2026-10-22 低通平滑：遥测 5Hz（每 200ms 一个真点）、速度还有噪声 ⇒ 直接跟目标位置会出现
+       "每 200ms 跳一下"（用户观察到"图标固定时间更新"）。改成每帧向目标逼近 35%：
+       视觉连续平滑，滞后约 60ms（可接受），且能吸收坏帧的跳变。 */
+    if (S.dspX === undefined || Math.abs(tgtX - S.dspX) > 800 || Math.abs(tgtY - S.dspY) > 800){
+      S.dspX = tgtX; S.dspY = tgtY;                    /* 首次/大跳（重置原点）直接对齐 */
+    } else {
+      S.dspX += (tgtX - S.dspX) * 0.35;
+      S.dspY += (tgtY - S.dspY) * 0.35;
+    }
+    var exX = S.dspX, exY = S.dspY;
+    g.setAttribute("transform", "translate(" + sx(exX).toFixed(1) + "," + sy(exY).toFixed(1)
+                   + ") rotate(" + (-S.th).toFixed(1) + ")");
+    /* ★2026-10-22 P0-1：轨迹末端在 20Hz 循环里延伸（只改 points 属性，不重建 SVG）
+       ⇒ 5Hz 遥测也不再"一条一条"，观感 20 步/秒 */
+    var pl = document.querySelector("#trackP");
+    if (pl && S.path.length > 1){
+      /* ★2026-10-22 修"轨迹末尾断开/切角"：原来用 S._ppStatic（每 4 个点才刷新的旧点串）
+         + 外推末端 ⇒ 中间那一截被画成一条直线（车开得越远越明显）。
+         现在每一帧都用"最近 150 个真实点 + 外推末端"重算点串（只 setAttribute，不重建 SVG）⇒ 轨迹连续。 */
+      var pts = trackPts();
+      if (pts) pl.setAttribute("points", pts + " " + sx(exX).toFixed(1) + "," + sy(exY).toFixed(1));
+    }
+  }catch(e){}
+}, 50);
+/* ===== 点图选点（需先点「点图选点」开启）：十字准线 + 格点吸附 ===== */
+var pickOn = false;
+$("btnPick").addEventListener("click", function(){
+  pickOn = !pickOn;
+  this.textContent = pickOn ? "☑ 点图选点：开" : "☒ 点图选点：关";   // 吸附规则见 title 提示
+  this.style.borderColor = pickOn ? "var(--acc)" : "";
+  this.style.color = pickOn ? "var(--acc)" : "";
+  $("field").style.cursor = pickOn ? "crosshair" : "";
+  if (!pickOn){ var g = $("field").querySelector("#cursorG"); if (g) g.innerHTML = "";
+    S.pickMark = null; drawCursor(); $("pickInfo").textContent = ""; }
+  log(pickOn ? "点图选点已开启：每次点击必落在 0.25m 格网（格点/边中点/格心）；按住 Shift 点击 = 自由位置"
+            : "点图选点已关闭", "mut");
+});
+/* 事件坐标 → 地图 mm。
+   吸附：候选点 = step/2 的整数倍（涵盖 ①格点 ②边中点 ③小方格中心 三种位置），
+   距候选 < step×0.10 时吸附，并标注吸附类型 */
+/* 吸附到 0.25m 格网（step/2）：每次点击必中 格点/边中点/格心 之一，绝不落空。
+   自由位置用 Shift+点击（evToMap 的 free 参数） */
+function snapAxis(v, st2){
+  return { v: Math.round(v / st2) * st2, snapped: true };
+}
+function evToMap(ev, free, force){
+  var svg = $("field"), r = svg.getBoundingClientRect();
+  var vb = (svg.getAttribute("viewBox")||"0 0 520 520").split(" ").map(Number);
+  /* ★等比缩放（preserveAspectRatio=meet）⇒ 先算实际缩放与居中偏移，再反解 */
+  var scl = Math.min(r.width / vb[2], r.height / vb[3]);
+  var ox  = r.left + (r.width  - vb[2] * scl) / 2;
+  var oy  = r.top  + (r.height - vb[3] * scl) / 2;
+  var vx = (ev.clientX - ox) / scl + vb[0];
+  var vy = (ev.clientY - oy) / scl + vb[1];
+  var mmx = (vx - MAP.W/2) / MAP.sc + MAP.mcx;
+  var mmy = -(vy - MAP.H/2) / MAP.sc + MAP.mcy;   /* 屏幕 y 向下 */
+  if (free) return { x:mmx, y:mmy, snapX:false, snapY:false, kind:"" };   /* Shift = 强制自由 */
+  /* ★智能吸附（2026-10-18）：只有光标离吸附线 10 个视图像素以内才吸，否则自由落点。
+     旧行为是**无条件吸附**，导致只能标在网格/中点/格心上。Alt = 强制吸附（精确放格点用）。*/
+  var st2 = MAP.step / 2;
+  var thr  = 10 / MAP.sc;                       /* 10 个视图单位换算成 mm */
+  var nx = Math.round(mmx / st2) * st2, ny = Math.round(mmy / st2) * st2;
+  var useX = force || Math.abs(nx - mmx) <= thr;
+  var useY = force || Math.abs(ny - mmy) <= thr;
+  var x = useX ? nx : mmx, y = useY ? ny : mmy;
+  var kind = "";
+  if (useX && useY){
+    var onGridX = Math.abs(x / MAP.step - Math.round(x / MAP.step)) < 1e-6;
+    var onGridY = Math.abs(y / MAP.step - Math.round(y / MAP.step)) < 1e-6;
+    kind = (onGridX && onGridY) ? "格点" : (onGridX || onGridY) ? "边中点" : "格心";
+  }
+  return { x:x, y:y, snapX:useX, snapY:useY, kind:kind };
+}
+/* ★录屏用：网址加 ?cols=1 强制单列 / ?cols=2 强制双列（无视窗口宽度） */
+(function(){
+  if (typeof location === "undefined" || !location.search) return;   /* 测试沙箱无 location */
+  var m = /[?&]cols=([12])/.exec(location.search);
+  if (m) document.documentElement.classList.add("force" + m[1]);
+})();
+var pathMuteUntil = 0;    /* ★$ORG 后的轨迹静音截止时间（ms） */
+var cursorAt = null;      /* 最近一次鼠标落点（用户系 mm，已吸附）——draw() 会用它重画准线 */
+function drawCursor(){
+  var g = $("field").querySelector("#cursorG"); if (!g) return;
+  if (!MAP){ g.innerHTML = ""; return; }
+  var s = "";
+  /* ---- 已选点标记（绿色 ○ + 中心点 + 文字标签，与青色鼠标准线明确区分）---- */
+  if (S.pickMark){
+    var MX = (MAP.W/2 + (S.pickMark.x-MAP.mcx)*MAP.sc).toFixed(1);
+    var MY = (MAP.H/2 - (S.pickMark.y-MAP.mcy)*MAP.sc).toFixed(1);
+    s += '<circle cx="'+MX+'" cy="'+MY+'" r="8" fill="none" stroke="var(--ok)" stroke-width="2"/>'
+       + '<circle cx="'+MX+'" cy="'+MY+'" r="2.2" fill="var(--ok)"/>'
+       + '<text x="'+(+MX+10)+'" y="'+(+MY+4)+'" font-size="11" fill="var(--ok)" font-family="var(--mono)">'
+       + '已选#' + S.pickCnt + ' ' + (S.pickMark.x/1000).toFixed(2) + ', ' + (S.pickMark.y/1000).toFixed(2) + '</text>';
+  }
+  /* ---- 鼠标准线（仅开关开启且有鼠标位置时显示）---- */
+  if (pickOn && cursorAt){
+    var p = cursorAt;
+    var X = (MAP.W/2 + (p.x-MAP.mcx)*MAP.sc).toFixed(1);
+    var Y = (MAP.H/2 - (p.y-MAP.mcy)*MAP.sc).toFixed(1);
+    s += '<line x1="'+X+'" y1="0" x2="'+X+'" y2="'+MAP.H+'" stroke="var(--acc)" stroke-width="0.7" opacity="0.55"/>';
+    s += '<line x1="0" y1="'+Y+'" x2="'+MAP.W+'" y2="'+Y+'" stroke="var(--acc)" stroke-width="0.7" opacity="0.55"/>';
+    if (p.snapX && p.snapY)
+      s += '<circle cx="'+X+'" cy="'+Y+'" r="6" fill="none" stroke="var(--acc)" stroke-width="1.5"/>';
+    s += '<text x="'+(+X+9)+'" y="'+(+Y+16)+'" font-size="11" fill="var(--acc)" font-family="var(--mono)">'
+       + (p.x/1000).toFixed(2) + ', ' + (p.y/1000).toFixed(2) + ' m'
+       + (p.kind ? "  [" + p.kind + "]" : "") + '</text>';
+  }
+  g.innerHTML = s;
+}
+$("field").addEventListener("mousemove", function(ev){
+  if (!pickOn || !MAP) return;
+  cursorAt = evToMap(ev, ev.shiftKey, ev.altKey);   /* ★ 记住位置，重绘后再画（否则被 10Hz 遥测重绘擦掉）*/
+  drawCursor();
+});
+$("field").addEventListener("mouseleave", function(){
+  cursorAt = null; drawCursor();
+});
+$("field").addEventListener("click", function(ev){
+  if (wpSelClear()) return;                 /* 点空白 = 取消选中（不触发取点，避免误加） */
+  if (obsMode && MAP){
+    var po = evToMap(ev, ev.shiftKey, ev.altKey);
+    obsAdd(Math.round(po.x), Math.round(po.y), "点图标注");
+    return;
+  }
+  if (!pickOn && !ev.shiftKey){
+    log("点图选点未开启 —— 请先点地图右上角的「☒ 点图选点：关」（或按住 Shift 点击临时取点）", "warn");
+    return;
+  }
+  if (!MAP) return;
+  var p = evToMap(ev, ev.shiftKey, ev.altKey);
+  $("wx").value = (p.x/1000).toFixed(2);
+  $("wy").value = (p.y/1000).toFixed(2);
+  S.pickMark = { x:p.x, y:p.y };              /* ★ 在地图上留标记，点击有明确反馈 */
+  S.pickCnt++; S.pickMarkAt = Date.now();      /* 涟漪起点（解决"同一点重复点击无可见变化"） */
+  drawCursor();
+  var txt = "已选 (" + (p.x/1000).toFixed(2) + ", " + (p.y/1000).toFixed(2) + ") m"
+          + (p.kind ? "（" + p.kind + "）" : "（自由位置）");
+  $("pickInfo").textContent = txt + " —— 右侧「添加途径点」即可录入";
+  $("pickInfo").style.color = "var(--acc)";
+  /* 点击涟漪：一次性 SMIL 动画（不参与遥测重绘，不会打断后续点击） */
+  try{
+    var g0 = $("field").querySelector("#cursorG");
+    if (g0){
+      var PX = (MAP.W/2 + (p.x-MAP.mcx)*MAP.sc).toFixed(1);
+      var PY = (MAP.H/2 - (p.y-MAP.mcy)*MAP.sc).toFixed(1);
+      g0.innerHTML += '<circle cx="'+PX+'" cy="'+PY+'" r="6" fill="none" stroke="var(--ok)" '
+        + 'stroke-width="2" opacity="0">'
+        + '<animate attributeName="r" from="6" to="26" dur="0.45s" fill="freeze" repeatCount="1"/>'
+        + '<animate attributeName="opacity" from="0.9" to="0" dur="0.45s" fill="freeze" repeatCount="1"/>'
+        + '</circle>';
+      setTimeout(function(){ try{ g0.innerHTML = g0.innerHTML.replace(/<circle[^>]*animate[^<]*<\/circle>/, ""); }catch(e){} }, 600);
+    }
+  }catch(e){}
+  log(txt + " —— 已填入 X/Y，点「添加途径点」录入", "ok");
+});
+
+/* ===== 键盘控制（需点「键盘控制」开启）=====
+   W/S = 前进/后退（±Y）· A/D = 左转/右转（逆时针/顺时针，原地）· Q/E = 左移/右移（±X）
+   轻点一小步；按住 0.14s 后无缝转连续模式（每 220ms 补发同方向新指令 ⇒ 不顿挫）；松开 = $STOP
+   ★ 方向符号约定（与固件一致）：$MV,SPIN,+ = 逆时针(左)，- = 顺时针(右) */
+var kbdOn = false;
+var kb = { timer:null, hold:null, cmd:null };
+var KB_STEP = 100, KB_TURN = 15,
+    /* ★ 按住判定 140ms：必须早于“第一步走完”（15° 需 167ms），
+       否则会出现“走完 → 停约 350ms → 再起步”的起步顿挫 */
+    KB_HOLD_AFTER = 140,
+    KB_CONT = 300, KB_TURN_CONT = 25, KB_PERIOD = 220;
+/* [命令, 轻点值, 连续值] —— 连续值的符号必须与轻点一致 */
+var KB_MAP = {
+  "w":         ["FWD",  KB_STEP,       KB_CONT],
+  "arrowup":   ["FWD",  KB_STEP,       KB_CONT],
+  "s":         ["BACK", KB_STEP,       KB_CONT],
+  "arrowdown": ["BACK", KB_STEP,       KB_CONT],
+  "a":         ["SPIN", KB_TURN,       KB_TURN_CONT],    /* 左转 = 逆时针 = 正 */
+  "arrowleft": ["SPIN", KB_TURN,       KB_TURN_CONT],
+  "d":         ["SPIN", -KB_TURN,     -KB_TURN_CONT],    /* 右转 = 顺时针 = 负 */
+  "arrowright":["SPIN", -KB_TURN,     -KB_TURN_CONT],
+  "q":         ["LEFT",  KB_STEP,       KB_CONT],
+  "e":         ["RIGHT", KB_STEP,       KB_CONT]
+};
+function kbFrame(cmd, val){ return "$MV," + cmd + "," + val; }
+function kbBtnSync(){
+  $("btnKbd").textContent = kbdOn ? "☑ 键盘：开" : "☒ 键盘：关";
+  $("btnKbd").style.borderColor = kbdOn ? "var(--acc)" : "";
+  $("btnKbd").style.color = kbdOn ? "var(--acc)" : "";
+
+}
+/* ★2026-10-21 点击后自动 blur：键盘控制开启时，焦点留在 checkbox/button 上会让
+   keydown 被 "tagName===INPUT" 守卫拦掉（实测：点视野锁定 ⇒ 键盘失灵，重开键盘才恢复）。
+   统一在文档级 blur，一次治好整类问题（含速度档、急停等所有按钮）。*/
+document.addEventListener("click", function(ev){
+  var t = ev.target;
+  if (t && (t.tagName === "BUTTON" || (t.tagName === "INPUT" && t.type === "checkbox")))
+    try{ t.blur(); }catch(e){}
+});
+$("btnKbd").addEventListener("click", function(){
+  kbdOn = !kbdOn; kbBtnSync(); kbStop();
+  log(kbdOn ? "键盘控制已开启：W/S=前后 A/D=左转/右转 Q/E=左右平移（轻点一小步，按住连走），空格=暂停，X=急停"
+            : "键盘控制已关闭", "mut");
+});
+function kbStop(){
+  /* ★ 只有"连续模式真正在跑"时才需要 $STOP；
+     纯轻点（按住不足 KB_HOLD_AFTER）让它自己走完一整步 —— 否则松手就把 100mm/15° 打断，
+     表现为"点一下几乎不动、每次角度都不一样" */
+  var cont = (kb.timer !== null);
+  if (kb.timer){ clearInterval(kb.timer); kb.timer = null; }
+  if (kb.hold){ clearTimeout(kb.hold); kb.hold = null; }
+  kb.cmd = null;
+  if (cont && S.conn) send("$STOP");
+}
+document.addEventListener("keydown", function(ev){
+  if (!kbdOn) return;
+  if (ev.target && ev.target.tagName === "INPUT") return;
+  var mv = KB_MAP[ev.key.toLowerCase()];
+  if (mv){
+    ev.preventDefault();
+    if (ev.repeat || !S.conn) return;              /* 长按的系统 repeat 不重复发 */
+    var frame = kbFrame(mv[0], mv[1]);
+    if (kb.cmd === frame) return;                  /* 已按着同一方向 */
+    kbStop();                                      /* 换方向：先停旧方向 */
+    kb.cmd = frame;
+    var nowMs = Date.now();
+    if (kb.lastTap && (nowMs - kb.lastTap) < 250)
+      log("上一条动作可能还没走完 —— 本次会从当前位置继续累加", "mut");
+    kb.lastTap = nowMs;
+    manualMove(frame);
+    var contFrame = kbFrame(mv[0], mv[2]);         /* ★ 连续帧与轻点同号 */
+    kb.hold = setTimeout(function(){
+      kb.hold = null;
+      if (!S.conn) return;
+      send(contFrame);   /* ★ 立即补一条接上第一步，消除“走完→停→再起步”的顿挫 */
+      kb.timer = setInterval(function(){ if (S.conn) send(contFrame); }, KB_PERIOD);
+    }, KB_HOLD_AFTER);
+  }
+  else if (ev.key === " "){ ev.preventDefault(); kbStop(); if (S.conn) send("$STOP"); }
+  else if (ev.key.toLowerCase() === "x"){ kbStop(); if (S.conn) send("$ESTOP"); }
+});
+document.addEventListener("keyup", function(ev){
+  if (KB_MAP[ev.key.toLowerCase()]) kbStop();
+});
+window.addEventListener("blur", function(){ if (kbdOn) kbStop(); });
+
+/* 自定义手动动作：距离（米，负=沿车尾方向） / 角度（度，正=逆时针） */
+$("btnMvDist").addEventListener("click", function(){
+  var vm = parseFloat($("mvDist").value);                 // 输入单位：米
+  if (!isFinite(vm) || vm === 0){ log("请输入距离（米，负=后退）", "err"); return; }
+  var v = Math.round(vm * 1000);                          // 协议仍是 mm
+  if (Math.abs(v) > 32000){                               /* ★ 安全上限：与固件饱和值一致 */
+    log("距离超限（限 ±32m）—— 已按 " + (vm > 0 ? "+32m" : "-32m") + " 处理", "warn");
+    v = (v > 0 ? 32000 : -32000);
+  }
+  if (v > 0) manualMove("$MV,FWD," + v); else manualMove("$MV,BACK," + (-v));
+});
+$("mvDist").addEventListener("keydown", function(e){ if (e.key === "Enter") $("btnMvDist").click(); });
+$("btnMvDeg").addEventListener("click", function(){
+  var v = parseInt($("mvDeg").value, 10);
+  if (!isFinite(v) || v === 0){ log("请输入角度（正=逆时针，负=顺时针）", "err"); return; }
+  if (Math.abs(v) > 1080){                        /* ★2026-10-22 上限 720→1080：
+                                                     演示需要"三整圈"，且实测 1080 逻辑本身没问题；
+                                                     之前 1080 被砍成 720 导致"只转 715°"的误判 */
+    log("单次转角限 ±1080° —— 已按 " + (v > 0 ? "+1080°" : "-1080°") + " 处理", "warn");
+    v = (v > 0 ? 1080 : -1080);
+  }
+  manualMove("$MV,SPIN," + v);
+});
+$("mvLat").addEventListener("keydown", function(e){ if (e.key === "Enter") $("btnMvLat").click(); });
+$("btnMvLat").addEventListener("click", function(){
+  var vm = parseFloat($("mvLat").value);                  // 米；正=向左，负=向右
+  if (!isFinite(vm) || vm === 0){ log("请输入横移距离（米，正=向左，负=向右）", "err"); return; }
+  var v = Math.round(vm * 1000);
+  if (Math.abs(v) > 32000){
+    log("横移超限（限 ±32m）—— 已按 " + (vm > 0 ? "+32m" : "-32m") + " 处理", "warn");
+    v = (v > 0 ? 32000 : -32000);
+  }
+  if (v > 0) manualMove("$MV,LEFT," + v); else manualMove("$MV,RIGHT," + (-v));
+});
+$("mvDeg").addEventListener("keydown", function(e){ if (e.key === "Enter") $("btnMvDeg").click(); });
+
+/* 急停：双击确认（2 秒内），防演示误触 */
+var estopArm = 0;
+/* ★速度三档（2026-10-20）：$CFG,3,档位（0慢150 / 1中200 / 2快280 mm/s）*/
+function setGear(g){
+  if (!S.conn){ log("未连接 —— 档位已记住，连接后自动下发", "warn"); }
+  else send("$CFG,3," + g);
+  try{ localStorage.setItem("gear", g); }catch(e){}
+  document.querySelectorAll(".gearbtn").forEach(function(b){ b.classList.toggle("on", +b.dataset.gear === +g); });
+  log("速度档位：" + ["慢 150","中 200","快 280"][g] + " mm/s（平移/旋转同档）", "warn");
+}
+document.querySelectorAll(".gearbtn").forEach(function(b){
+  b.addEventListener("click", function(){ setGear(+this.dataset.gear); });
+});
+try{
+  var g0 = localStorage.getItem("gear");
+  if (g0 !== null && g0 !== "1") setTimeout(function(){ setGear(+g0); }, 1500);   /* 连上后自动恢复 */
+  var gNow = (g0 === null || g0 === undefined) ? 1 : +g0;
+  document.querySelectorAll(".gearbtn").forEach(function(b){ b.classList.toggle("on", +b.dataset.gear === gNow); });
+}catch(e){}
+$("btnEstop").addEventListener("click", function(){
+  var b = $("btnEstop");
+  if (!S.conn){ log("未连接，急停不可用", "err"); return; }
+  if (Date.now() - estopArm < 2000){
+    send("$ESTOP");
+    estopArm = 0;
+    b.textContent = "■ 急停 $ESTOP";
+    b.classList.remove("armed");
+    log("！！已发送急停 —— 需要恢复时按「⏸ 暂停」($STOP) 解除故障态", "err");
+  } else {
+    estopArm = Date.now();
+    b.textContent = "⚠ 再按一次确认急停";
+    b.classList.add("armed");
+    setTimeout(function(){
+      if (Date.now() - estopArm >= 1900){
+        b.textContent = "■ 急停 $ESTOP";
+        b.classList.remove("armed");
+      }
+    }, 2100);
+  }
+});
+
+/* 时钟 + 数据超时看门狗（3s 无任何数据 → 状态点变黄提示一次） */
+setInterval(function(){ $("clock").textContent = now(); }, 1000);
+setInterval(function(){
+  if (!S.conn) return;
+  var silent = S.lastRx && (Date.now() - S.lastRx > 3000);
+  if (silent && !S.timedOut){
+    S.timedOut = true;
+    setStatus("数据超时（>3s 未收到任何帧）", "warn");
+    log("警告：超过 3 秒未收到任何数据，检查蓝牙连接 / 小车供电", "warn");
+  } else if (!silent && S.timedOut){
+    S.timedOut = false;
+    setStatus("已连接", "on");
+    log("数据恢复", "ok");
+  }
+}, 1000);
+
+log("控制台 v2 就绪。连接方式选「蓝牙 BLE」→ 点「连接」→ 弹窗里选 ATK-BLE02。", "mut");
+log("离线可先选「模拟数据」查看界面效果；急停为双击确认。", "mut");
+obsLoad(); draw();      /* 载入持久化的障碍记忆 */
+render();
+try{if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('light')}catch(e){}
+</script>
+</body>
+</html>

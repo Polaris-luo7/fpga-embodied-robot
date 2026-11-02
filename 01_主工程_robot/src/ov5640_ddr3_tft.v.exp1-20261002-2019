@@ -1,0 +1,364 @@
+//=============================================================================
+// ov5640_ddr3_tft.v — 任务一 TFT 版：OV5640 采集 → DDR3 帧缓存 → 800x480 RGB 屏
+//-----------------------------------------------------------------------------
+// 基线：官方第 47 章 ov5640_ddr3_hdmi（摄像头 + DDR3 帧缓存链路保持不变）
+// 改动：
+//   1) 显示端由 HDMI(TMDS) 换成 J1 上的 800x480 RGB565 并口屏（第 28 章已验证）
+//   2) 显示像素时钟 33MHz（tft_pll，参数取自第 28 章例程）
+//   3) 摄像头输出分辨率 1280x720 → 800x480（初始化表 0x3808-0x380b 本就按
+//      IMAGE_WIDTH/IMAGE_HEIGHT 参数生成，改参数即可）
+//   4) disp_parameter_cfg.v 切换为 HW_TFT50 + MODE_RGB565 + Resolution_800x480
+// 引脚：TFT_* 与官方《ACG720-138&60K通用管脚分配表》TFT 段逐针一致
+//=============================================================================
+`timescale 1ns/1ps
+
+module gao_ov5640_ddr_tft(
+    //System clock reset
+    input       clk50M        , //系统时钟输入，50MHz
+    input       reset_n       , //复位信号输入（板上 S0 / F15）
+
+    //camera interface
+    output      camera_sclk   ,
+    inout       camera_sdat   ,
+    input       camera_vsync  ,
+    input       camera_href   ,
+    input       camera_pclk   ,
+    output      camera_xclk   ,
+    input  [7:0]camera_data   ,
+    output      camera_rst_n  ,
+    output      camera_pwdn   ,
+    //led
+    output [3:0]led           ,
+
+    //TFT (J1) RGB565 parallel output
+    output [15:0] TFT_rgb     ,
+    output        TFT_clk     ,
+    output        TFT_de      ,
+    output        TFT_hs      ,
+    output        TFT_vs      ,
+    output        TFT_pwm     , //背光，高电平点亮
+
+    //ddr
+    output [13:0] O_ddr_addr  ,
+    output [2:0]  O_ddr_ba    ,
+    output        O_ddr_cs_n  ,
+    output        O_ddr_ras_n ,
+    output        O_ddr_cas_n ,
+    output        O_ddr_we_n  ,
+    output        O_ddr_clk   ,
+    output        O_ddr_clk_n ,
+    output        O_ddr_cke   ,
+    output        O_ddr_odt   ,
+    output        O_ddr_reset_n,
+    output [1:0]  O_ddr_dqm   ,
+    inout [15:0]  IO_ddr_dq   ,
+    inout [1:0]   IO_ddr_dqs  ,
+    inout [1:0]   IO_ddr_dqs_n
+);
+
+    //采集与显示同为 800x480（TFT 原生分辨率）
+    parameter IMAGE_WIDTH  = 800;
+    parameter IMAGE_HEIGHT = 480;
+
+    wire          loc_clk24m;
+    wire          g_rst_p;
+    wire          clk_200M;
+    wire          pll_lock;
+    wire          loc_clk50m;
+    wire          clk_tft;        //33MHz TFT 像素时钟
+
+    //camera
+    wire          camera_init_done;
+    wire          pclk_bufg_o;
+
+    //ddr
+    wire          fifo_aclr;
+    wire          fifo_wrreq;
+    wire [15:0]   fifo_wrdata;
+    wire          init_calib_complete;
+    wire          wr_load;
+
+    //display
+    wire [11:0]   hcount;
+    wire [11:0]   vcount;
+    wire [15:0]   disp_data;      //RGB565
+    wire          video_hs;
+    wire          video_vs;
+    wire          video_de;
+    wire [4:0]    video_r;
+    wire [5:0]    video_g;
+    wire [4:0]    video_b;
+
+    assign g_rst_p = ~pll_lock;
+    assign led = {~g_rst_p, camera_init_done, init_calib_complete, pll_lock};
+
+    //---- 33MHz TFT 像素时钟（参数来自第28章例程：MDIV=33, ODIV0=50 @50MHz） ----
+    tft_pll u_tft_pll(
+        .lock   (          ),
+        .clkout0(clk_tft   ),
+        .clkin  (clk50M    ),
+        .reset  (~reset_n  )
+    );
+
+    //---- 摄像头时钟：clkout1 = 24MHz XCLK（clkout0 原供 375MHz TMDS，已不用） ----
+    camera_pll camera_pll(
+        .clkout0(          ),
+        .clkout1(loc_clk24m),
+        .clkin  (loc_clk50m)
+    );
+
+    Gowin_PLL Gowin_PLL(
+        .lock   (pll_lock  ),
+        .clkout0(clk_200M  ),
+        .clkout1(loc_clk50m),
+        .clkin  (clk50M    ),
+        .reset  (~reset_n  )
+    );
+
+    assign camera_xclk = loc_clk24m;
+
+    //---- 摄像头寄存器配置（分辨率随参数变化） ----
+    camera_init
+    #(
+        .SYS_CLOCK      ( 50_000_000   ),
+        .SCL_CLOCK      ( 400_000      ),
+        .CAMERA_TYPE    ( "ov5640"     ),
+        .IMAGE_TYPE     ( 0            ),
+        .IMAGE_WIDTH    ( IMAGE_WIDTH  ),
+        .IMAGE_HEIGHT   ( IMAGE_HEIGHT ),
+        .IMAGE_FLIP_EN  ( 0            ),
+        .IMAGE_MIRROR_EN( 0            )
+    )camera_init
+    (
+        .Clk         (loc_clk50m       ),
+        .Rst_n       (reset_n          ),
+        .Init_Done   (camera_init_done ),
+        .camera_rst_n(camera_rst_n     ),
+        .camera_pwdn (camera_pwdn      ),
+        .i2c_sclk    (camera_sclk      ),
+        .i2c_sdat    (camera_sdat      )
+    );
+
+    assign pclk_bufg_o = camera_pclk;
+
+    //---- DVP 采集（前 10 帧丢弃，RGB565 16bit） ----
+    DVP_Capture DVP_Capture(
+        .Rst_n      (reset_n         ),
+        .PCLK       (pclk_bufg_o     ),
+        .Vsync      (camera_vsync    ),
+        .Href       (camera_href     ),
+        .Data       (camera_data     ),
+        .ImageState (fifo_aclr       ),
+        .DataValid  (fifo_wrreq      ),
+        .DataPixel  (fifo_wrdata     ),
+        .DataHs     (                ),
+        .DataVs     (wr_load         ),
+        .Xaddr      (                ),
+        .Yaddr      (                )
+    );
+
+    wire          rdfifo_rden;
+    wire          wrfifo_clr;
+    wire          wrfifo_wren;
+    wire [15:0]   wrfifo_din;
+    wire          wrfifo_clk;
+    wire          rdfifo_clr;
+    wire          rdfifo_clk;
+    wire [15:0]   rdfifo_dout;
+
+    assign wrfifo_clr  = fifo_aclr;
+    assign wrfifo_clk  = pclk_bufg_o;
+    assign wrfifo_wren = fifo_wrreq;
+    assign wrfifo_din  = fifo_wrdata;
+    assign rdfifo_clr  = 1'b0;
+    assign rdfifo_clk  = clk_tft;
+    assign disp_data   = rdfifo_dout;      //RGB565 直接送显示（disp_driver 按 Red_Bits/Green_Bits/Blue_Bits 切分）
+
+    wire [27:0] app_addr_max = IMAGE_WIDTH * IMAGE_HEIGHT;
+    wire [7:0]  burst_len    = IMAGE_WIDTH[10:3];
+
+    ddr3_ctrl_2port ddr3_ctrl_2port(
+        .clk(loc_clk50m)                 ,
+        .pll_lock(pll_lock)              ,
+        .clk_200m(clk_200M)              ,
+        .sys_rst_n(reset_n)              ,
+        .init_calib_complete(init_calib_complete) ,
+
+        .rd_load(video_vs)               ,
+        .wr_load(wr_load)                ,
+        .app_addr_rd_min(28'd0)          ,
+        .app_addr_rd_max(app_addr_max)   ,
+        .rd_bust_len(burst_len)          ,
+        .app_addr_wr_min(28'd0)          ,
+        .app_addr_wr_max(app_addr_max)   ,
+        .wr_bust_len(burst_len)          ,
+
+        .wr_clk(wrfifo_clk)              ,
+        .wfifo_wren(wrfifo_wren)         ,
+        .wfifo_din(wrfifo_din)           ,
+        .rd_clk(rdfifo_clk)              ,
+        .rfifo_rden(rdfifo_rden)         ,
+        .rfifo_dout(rdfifo_dout)         ,
+
+        .ddr3_dq(IO_ddr_dq)              ,
+        .ddr3_dqs_n(IO_ddr_dqs_n)        ,
+        .ddr3_dqs_p(IO_ddr_dqs)          ,
+        .ddr3_addr(O_ddr_addr)           ,
+        .ddr3_ba(O_ddr_ba)               ,
+        .ddr3_ras_n(O_ddr_ras_n)         ,
+        .ddr3_cas_n(O_ddr_cas_n)         ,
+        .ddr3_we_n(O_ddr_we_n)           ,
+        .ddr3_reset_n(O_ddr_reset_n)     ,
+        .ddr3_ck_p(O_ddr_clk)            ,
+        .ddr3_ck_n(O_ddr_clk_n)          ,
+        .ddr3_cke(O_ddr_cke)             ,
+        .ddr3_cs_n(O_ddr_cs_n)           ,
+        .ddr3_dm(O_ddr_dqm)              ,
+        .ddr3_odt(O_ddr_odt)
+    );
+
+    //---- 800x480 RGB565 时序发生器（disp_driver，配置见 disp_parameter_cfg.v） ----
+    disp_driver disp_driver(
+        .ClkDisp(clk_tft),
+        .Rst_n(reset_n),
+        .Data(disp_data),
+        .DataReq(rdfifo_rden),
+        .H_Addr(hcount),
+        .V_Addr(vcount),
+        .Disp_HS(video_hs),
+        .Disp_VS(video_vs),
+        .Disp_Red(video_r),
+        .Disp_Green(video_g),
+        .Disp_Blue(video_b),
+        .Frame_Begin(),
+        .Disp_DE(video_de),
+        .Disp_PCLK(TFT_clk)
+    );
+
+    //====================================================================
+    // OSD 字符叠加（T10）
+    //   位置：disp_driver 输出之后、TFT 并口之前（教材第31章要求的位置）
+    //   链路：cam_rate_meter(50MHz 域实测 fps) -> osd_num_writer(跨域+十进制展开)
+    //         -> osd_overlay(字库查表 + 像素叠加)
+    //   参数化：位置(OSD_BOX_X/Y、FPS_ROW/COL0)与配色(OSD_INK/BG)全部在下面改，
+    //           上板调观感只动参数，不动设计。
+    //====================================================================
+    localparam integer OSD_BOX_X = 8;
+    localparam integer OSD_BOX_Y = 8;
+    localparam integer OSD_NROW  = 4;
+    localparam integer OSD_NCOL  = 40;
+    localparam [15:0]  OSD_INK   = 16'h07E0;   // 字符色：RGB565 绿
+    localparam [15:0]  OSD_BG    = 16'h0000;   // 窗口底色：黑（保证可读）
+    localparam [4:0]   FPS_ROW   = 5'd1;       // fps 写在第 1 行（第 0 行留给后续标签）
+    localparam [5:0]   FPS_COL0  = 6'd0;
+    localparam integer FPS_NDIG  = 3;          // 定宽 3 位
+    localparam integer FPS_LEAD0 = 1;          // 1=前导零 "FPS=030"; 0=前导空格
+
+    // 叠加总开关（演示兜底：OSD 出问题可一键关掉，画面恢复纯透传）
+    wire osd_en = 1'b1;
+
+    //====================================================================
+    // 【实验 1｜2026-10-02】摘除 cam_rate_meter（一次只动这一个变量）
+    //--------------------------------------------------------------------
+    // 只去掉 u_cam_rate 例化；OSD 其余（writer / CDC / overlay / 字库）全部保留。
+    // 动机：pclk_bufg_o 实为 `assign pclk_bufg_o = camera_pclk;`（**未过 BUFG**），
+    //       原 u_cam_rate 在 camera_pclk / camera_vsync 上新增负载 ⇒ 同一根原始
+    //       摄像头时钟网的布线/偏斜改变，DVP_Capture 的采样被破坏。
+    //       症状吻合：OSD 区域像素级完美，只有图像数据全成噪声。
+    // 代价：fps 失去真实来源 ⇒ val_src 接常数 16'd0 ⇒ 屏上应显 "FPS=000"。
+    //       保留一个 loc_clk50m 域的 1Hz 节拍驱动 writer 的 nd，目的是
+    //       **用屏上的 FPS=000 反证显示侧（writer→CDC→cbuf→overlay）仍然活着**。
+    //       该节拍只在 50M 域、与 pclk 域零耦合，不构成新变量。
+    // 回滚：备份 robot/src/ov5640_ddr3_tft.v.bak-20261002-201717
+    //====================================================================
+    localparam integer EXP1_TICK_DIV = 50_000_000;   // 50MHz / 50M = 1 Hz
+    reg  [25:0] exp1_tick_cnt;
+    reg         exp1_tick_1hz;
+    always @(posedge loc_clk50m or negedge reset_n) begin
+        if (!reset_n) begin
+            exp1_tick_cnt <= 26'd0;
+            exp1_tick_1hz <= 1'b0;
+        end else if (exp1_tick_cnt == EXP1_TICK_DIV - 1) begin
+            exp1_tick_cnt <= 26'd0;
+            exp1_tick_1hz <= 1'b1;
+        end else begin
+            exp1_tick_cnt <= exp1_tick_cnt + 1'b1;
+            exp1_tick_1hz <= 1'b0;
+        end
+    end
+
+    wire cam_rate_valid = exp1_tick_1hz;   // 原为 u_cam_rate 的 .valid
+
+    //---- 原例化（实验 1 摘除，保留备查/回滚）----
+    // cam_rate_meter u_cam_rate (
+    //     .clk      (loc_clk50m   ),
+    //     .rst_n    (reset_n      ),
+    //     .pclk     (pclk_bufg_o  ),   // ← 嫌疑：新增 pclk 负载
+    //     .vsync    (camera_vsync ),   // ← 嫌疑：新增 vsync 负载
+    //     .frame_cnt(cam_frame_cnt),
+    //     .pclk_cnt (cam_pclk_cnt ),
+    //     .valid    (cam_rate_valid)
+    // );
+
+    //---- fps -> 字符缓冲（跨 50M -> 33M）----
+    wire        osd_we;
+    wire [4:0]  osd_wrow;
+    wire [5:0]  osd_wcol;
+    wire [7:0]  osd_wcode;
+    wire [15:0] osd_fps_dbg;
+    wire        osd_nd_dbg;
+
+    osd_num_writer #(
+        .NDIG(FPS_NDIG), .LEAD_ZERO(FPS_LEAD0),
+        .LBL(32'h4650533D), .LBL_LEN(4),       // "FPS="
+        .ROW(FPS_ROW), .COL0(FPS_COL0),
+        .NCOL(OSD_NCOL), .VAL_MAX(999)
+    ) u_osd_fps (
+        .clk_src(loc_clk50m),
+        .val_src(16'd0),                       // 【实验1】fps 无真实来源 => 恒 0（屏上 "FPS=000"）
+        .nd_src (cam_rate_valid),
+        .pclk   (clk_tft),
+        .rst_n  (reset_n),
+        .we     (osd_we),
+        .wrow   (osd_wrow),
+        .wcol   (osd_wcol),
+        .wcode  (osd_wcode),
+        .val_dbg(osd_fps_dbg),
+        .nd_dbg (osd_nd_dbg)
+    );
+
+    //---- 叠加：RGB565 打包 -> osd_overlay -> TFT 并口 ----
+    wire [15:0] v_rgb565 = {video_b, video_g, video_r};
+    wire [15:0] osd_rgb;
+
+    osd_overlay #(
+        .H_ACTIVE(800), .V_ACTIVE(480),
+        .CHAR_W(8), .CHAR_H(16),
+        .NROW(OSD_NROW), .NCOL(OSD_NCOL),
+        .BOX_X(OSD_BOX_X), .BOX_Y(OSD_BOX_Y),
+        .INK(OSD_INK), .BGC(OSD_BG)
+    ) u_osd (
+        .pclk   (clk_tft),
+        .rst_n  (reset_n),
+        .de_in  (video_de),
+        .x_in   (hcount[11:0]),
+        .y_in   (vcount[11:0]),
+        .rgb_in (v_rgb565),
+        .de_out (        ),
+        .rgb_out(osd_rgb),
+        .we     (osd_we),
+        .wrow   (osd_wrow),
+        .wcol   (osd_wcol),
+        .wcode  (osd_wcode),
+        .disp_en(osd_en)
+    );
+
+    //---- TFT 并口输出 ----
+    // 官方管脚表：TFT_rgb[15:11]=B 通道, [10:5]=G 通道, [4:0]=R 通道
+    assign TFT_rgb = osd_rgb;
+    assign TFT_de  = video_de;
+    assign TFT_hs  = video_hs;
+    assign TFT_vs  = video_vs;
+    assign TFT_pwm = 1'b1;
+
+endmodule

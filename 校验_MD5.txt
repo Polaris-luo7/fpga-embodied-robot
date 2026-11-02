@@ -1,0 +1,14 @@
+# 关键文件校验（MD5）
+# 生成时间：2026-11-02 15:07
+
+cc33ffcbf3e93342cbe3761118865a3c              robot/src/ov5640_ddr3_tft.v
+bf95c4168f87da2177950e61186cd84d              robot/src/own/nav_ctrl.v
+9b1f4979ec64c0344f922ddfbc0f9a49              robot/src/own/nav_motor.v
+ff72292a09bb114525af63dd49c57820              robot/src/own/odom_core.v
+28dcb15ea07a3ad769c8e810862c7ef7              robot/src/own/imu_attitude.v
+7c4b345dc71679319128ef0e6d438d17              robot/src/own/bt_cmd2.v
+506cfd2af4e09c0ca9128adc72dc6f85              robot/src/vision/vision_mission.v
+806b4e65803916cc2e055330d23187c3              robot/src/ov5640_ddr3_tft.cst
+793f28ec0b8bc75215d0914e42d4770d              robot/src/ov5640_ddr3_tft.sdc
+55df329ea69c48f301706229d01a5ffe              robot/robot.gprj
+da2ae90b3f8a6cd6ddea5dbe440ea09e              v91.fs（位流，36,647,418 B）

@@ -1,0 +1,104 @@
+<?xml version="1" encoding="UTF-8"?>
+<!DOCTYPE gowin-fpga-project>
+<Project>
+    <Template>FPGA</Template>
+    <Version>5</Version>
+    <Device name="GW5AT-138B" pn="GW5AT-LV138PG484AC1/I0">gw5at138b-012</Device>
+    <FileList>
+        <File path="src/ov5640_ddr3_tft.v" type="file.verilog" enable="1"/>
+        <File path="src/camera_init/camera_init.v" type="file.verilog" enable="1"/>
+        <File path="src/camera_init/ov5640_init_table_rgb.v" type="file.verilog" enable="1"/>
+        <File path="src/camera_init/ov5640_init_table_jpeg.v" type="file.verilog" enable="1"/>
+        <File path="src/camera_init/i2c_control/i2c_control.v" type="file.verilog" enable="1"/>
+        <File path="src/camera_init/i2c_control/i2c_bit_shift.v" type="file.verilog" enable="1"/>
+        <File path="src/DVP_Capture/DVP_Capture.v" type="file.verilog" enable="1"/>
+        <File path="src/camera_pll/camera_pll.v" type="file.verilog" enable="1"/>
+        <File path="src/ddr3_ctrl_2port/ddr3_ctrl_2port.v" type="file.verilog" enable="1"/>
+        <File path="src/ddr3_ctrl_2port/fifo_ddr3_adapter.v" type="file.verilog" enable="1"/>
+        <File path="src/ddr3_memory_interface/ddr3_memory_interface.v" type="file.verilog" enable="1"/>
+        <File path="src/wr_data_fifo/wr_data_fifo.v" type="file.verilog" enable="1"/>
+        <File path="src/rd_data_fifo/rd_data_fifo.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_ddr/gowin_ddr.v" type="file.verilog" enable="1"/>
+        <File path="src/vga/disp_driver.v" type="file.verilog" enable="1"/>
+        <File path="src/vga/disp_parameter_cfg.v" type="file.verilog" enable="1"/>
+        <File path="src/tft_pll/tft_pll.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_clkdiv/gowin_clkdiv.v" type="file.verilog" enable="0"/>
+        <File path="src/vga/dvi_encoder.v" type="file.verilog" enable="0"/>
+        <File path="src/dvi_tx/dvi_tx.v" type="file.verilog" enable="0"/>
+        <File path="src/gowin_pll/gowin_pll.v" type="file.verilog" enable="1"/>
+        <File path="src/ddr_pll/ddr_pll.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_rpll/gowin_rpll.v" type="file.verilog" enable="0"/>
+        <File path="src/own/cam_rate_meter.v" type="file.verilog" enable="1"/>
+        <File path="src/own/i2c_bit_shift_imu.v" type="file.verilog" enable="1"/>
+        <File path="src/own/mpu6050_ctrl.v" type="file.verilog" enable="1"/>
+        <File path="src/own/cordic_atan2.v" type="file.verilog" enable="1"/>
+        <File path="src/own/imu_attitude.v" type="file.verilog" enable="1"/>
+        <File path="src/own/imu_display.v" type="file.verilog" enable="1"/>
+        <File path="src/own/osd_overlay.v" type="file.verilog" enable="1"/>
+        <File path="src/own/osd_cdc_nd.v" type="file.verilog" enable="1"/>
+        <File path="src/own/osd_num_writer.v" type="file.verilog" enable="1"/>
+        <File path="src/own/div_by_const.v" type="file.verilog" enable="1"/>
+        <File path="src/own/pclk_row_src.v" type="file.verilog" enable="1"/>
+        <File path="src/own/color_bar.v" type="file.verilog" enable="1"/>
+        <File path="src/own/quad_decoder.v" type="file.verilog" enable="1"/>
+        <File path="src/own/pi_controller.v" type="file.verilog" enable="1"/>
+        <File path="src/own/pwm_gen.v" type="file.verilog" enable="1"/>
+        <File path="src/own/tick_gen.v" type="file.verilog" enable="1"/>
+        <File path="src/own/div_const.v" type="file.verilog" enable="1"/>
+        <File path="src/own/speed_meas.v" type="file.verilog" enable="1"/>
+        <File path="src/own/speed_loop.v" type="file.verilog" enable="1"/>
+        <File path="src/task2/selftest_top.v" type="file.verilog" enable="1"/>
+        <File path="src/task2/selftest_ir.v" type="file.verilog" enable="1"/>
+        <File path="src/own/ultrasonic_hcsr04.v" type="file.verilog" enable="1"/>
+        <File path="src/own/dist_filter.v" type="file.verilog" enable="1"/>
+        <File path="src/own/bt_link.v" type="file.verilog" enable="1"/>
+        <File path="src/own/bt_telem2.v" type="file.verilog" enable="1"/>
+        <File path="src/own/bt_cmd2.v" type="file.verilog" enable="1"/>
+        <File path="src/own/odom_core.v" type="file.verilog" enable="1"/>
+        <File path="src/own/sin_cos_rom.v" type="file.verilog" enable="1"/>
+        <File path="src/own/odom_top.v" type="file.verilog" enable="1"/>
+        <File path="src/own/wp_queue.v" type="file.verilog" enable="1"/>
+        <File path="src/own/nav_ctrl.v" type="file.verilog" enable="1"/>
+        <File path="src/own/mech_ik.v" type="file.verilog" enable="1"/>
+        <File path="src/own/nav_motor.v" type="file.verilog" enable="1"/>
+        <File path="src/own/adc128s102.v" type="file.verilog" enable="1"/>
+        <File path="src/own/vbat_mon.v" type="file.verilog" enable="1"/>
+        <File path="src/ov5640_ddr3_tft.cst" type="file.cst" enable="1"/>
+        <File path="src/ov5640_ddr3_hdmi.cst" type="file.cst" enable="0"/>
+        <File path="src/ov5640_ddr3_tft.sdc" type="file.sdc" enable="1"/>
+        <File path="src/ov5640_ddr3_hdmi.v" type="file.verilog" enable="0"/>
+      <File path="src/task3/hcsr04_scan.v" type="file.verilog" enable="1" />
+    <File path="src/task3/hcsr04_small_target_scan.v" type="file.verilog" enable="1" />
+    <File path="src/task3/obstacle_decision.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_imu_attitude.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_motion_history.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_mpu6050_checked.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_reset_sync.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_route_fault_record.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_signed_div.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_small_target_sensing.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_snapshot_cdc.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_sonar_manual_gate.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_speedstep_pi.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_task2_auto_core.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_task2_backend.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_task2_fix_board.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_task2_fix_telemetry.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task123_task2_route.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task3_ab_filter.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task3_board_control.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task3_ir_receiver.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task3_motion_primitives.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task3_motor_backend.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task3_remote_keys.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task3_run_limit.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task3_task2_adapter.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task3_uart_telemetry.v" type="file.verilog" enable="1" />
+    <File path="src/task3/task3_vehicle_pi.v" type="file.verilog" enable="1" />
+    <File path="src/vision/vision_front.v" type="file.verilog" enable="1" />
+    <File path="src/vision/vision_blob.v" type="file.verilog" enable="1" />
+    <File path="src/vision/vision_detector.v" type="file.verilog" enable="1" />
+    <File path="src/vision/vision_command.v" type="file.verilog" enable="1" />
+    <File path="src/vision/vision_mission.v" type="file.verilog" enable="1" />
+  </FileList>
+</Project>
